@@ -1,0 +1,39 @@
+
+        Screen {
+            padding: 0;
+        }
+        #header {
+            height: 3;
+            color: #e8c07d;
+            padding: 0 1;
+        }
+        #panes {
+            height: 1fr;
+        }
+        #places {
+            width: 18;
+            height: 1fr;
+        }
+        #files {
+            width: 1fr;
+            height: 1fr;
+        }
+        #preview {
+            width: 34;
+            height: 1fr;
+            border: round #e8c07d;
+            border-title: preview;
+            padding: 1;
+        }
+        #status {
+            height: 1;
+            padding: 0 1;
+        }
+        #filter {
+            display: none;
+            height: 1;
+            width: 100%;
+            border: none;
+            padding: 0 1;
+        }
+        

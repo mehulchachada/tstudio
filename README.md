@@ -59,9 +59,17 @@ A 16:9 frame does not fit a 9:16 phone screen, so you choose:
 
 The default never silently discards picture.
 
+## The gallery
+
+<img src="docs/gallery.png" alt="the tstudio gallery browser" width="900">
+
+`tstudio` browses folders without touching ffmpeg, so a directory of 4 GB captures opens
+instantly — sizes and dates come from `stat`, and only the selected file is ever probed. Star a
+clip with `f` and it turns up under Favourites however deep it was buried.
+
 ## The editor
 
-<img src="docs/tui.png" alt="the tstudio TUI" width="900">
+<img src="docs/tui.png" alt="the tstudio editor" width="900">
 
 `tstudio VIDEO --tui` opens an interactive editor over the same engine: set a range, pick cut /
 convert / social, see exactly which keyframe the cut will land on and what file it will write,
