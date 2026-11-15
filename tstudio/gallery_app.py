@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import unicodedata
 
 import sys
@@ -178,7 +180,9 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             height: 1fr;
         }}
         #preview {{
-            width: 30;
+            width: 32%;
+            min-width: 30;
+            max-width: 90;
             height: 1fr;
             border: round {branding.AMBER};
             padding: 1;
@@ -531,21 +535,18 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
         def _open_editor(self, path: Path) -> None:
             """Hand the terminal to the editor, then take it back.
 
-            The editor is its own Textual App, and an App cannot run inside
-            another one. suspend() releases the terminal so it can, which is
-            what yazi does for an external editor. On the way back the folder
-            is reloaded, because the editor has very likely written a new file
+            suspend() releases the TERMINAL, not the event loop, so calling
+            run_editor() here raised "asyncio.run() cannot be called from a
+            running event loop" - one Textual App cannot run inside another.
+            The editor therefore runs as its own process, which is how yazi
+            opens an external editor too. On the way back the folder is
+            reloaded, because the editor has very likely written a new file
             into it.
             """
-            try:
-                from tstudio.tui import run_editor
-            except Exception as exc:  # noqa: BLE001 - textual missing, etc.
-                self.notify(str(exc), title="cannot open the editor", severity="error")
-                return
             self.favourites.add_recent(path)
             try:
                 with self.suspend():
-                    run_editor(path)
+                    subprocess.run(editor_command(path), check=False)
             except Exception as exc:  # noqa: BLE001 - never take the gallery down
                 self.notify(str(exc), title="editor failed", severity="error")
             self._reload()
@@ -560,6 +561,16 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             self.favourites.save()
 
     return GalleryApp(folder, favourites)
+
+
+def editor_command(path: Path) -> list[str]:
+    """argv for opening the editor on `path`, as a separate process.
+
+    A separate process is not a workaround: two Textual Apps cannot share one
+    event loop, and `python -m tstudio <file> --tui` is exactly the documented
+    way in.
+    """
+    return [sys.executable, "-m", "tstudio", str(path), "--tui"]
 
 
 def run_gallery(folder: Path) -> int:

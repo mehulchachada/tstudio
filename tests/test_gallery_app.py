@@ -222,11 +222,16 @@ class TestGalleryApp(unittest.TestCase):
                     row = next(i for i, n in enumerate(names) if "clip.mp4" in n)
                     table.move_cursor(row=row, column=0)
                     await pilot.pause()
-                    with mock.patch("tstudio.tui.run_editor", return_value=0) as editor,                          mock.patch.object(app, "suspend"):
+                    with mock.patch("tstudio.gallery_app.subprocess.run") as run,                          mock.patch.object(app, "suspend"):
                         await pilot.press("enter")
                         await pilot.pause()
-                    self.assertTrue(editor.called)
-                    self.assertEqual(editor.call_args[0][0].suffix, ".mp4")
+                    self.assertTrue(run.called)
+                    argv = run.call_args[0][0]
+                    # a separate process, on the real module entry point
+                    self.assertIn("-m", argv)
+                    self.assertIn("tstudio", argv)
+                    self.assertIn("--tui", argv)
+                    self.assertTrue(argv[-2].endswith(".mp4"))
 
             self._run(scenario())
         finally:
