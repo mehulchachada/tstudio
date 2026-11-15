@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip.cut import CutPlan, _pick_encoder, run_cut
-from vidclip.media import MediaInfo, filters_available, is_hdr
-from vidclip.timespec import format_time
+from lightbox import ClipError
+from lightbox.cut import CutPlan, _pick_encoder, run_cut
+from lightbox.media import MediaInfo, filters_available, is_hdr
+from lightbox.timespec import format_time
 
 TARGETS = {
     "2160p": 2160, "1440p": 1440, "1080p": 1080, "720p": 720,

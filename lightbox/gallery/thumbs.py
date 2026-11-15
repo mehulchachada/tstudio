@@ -7,10 +7,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip.convert import tonemap_filter
-from vidclip.gallery.entries import IMAGE_SUFFIXES, VIDEO_SUFFIXES
-from vidclip.media import probe
+from lightbox import ClipError
+from lightbox.convert import tonemap_filter
+from lightbox.gallery.entries import IMAGE_SUFFIXES, VIDEO_SUFFIXES
+from lightbox.media import probe
 
 
 def _default_cache_dir() -> Path:

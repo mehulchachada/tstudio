@@ -7,12 +7,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip.convert import TARGETS, plan_convert, run_convert
-from vidclip.cut import plan_cut, run_cut
-from vidclip.media import MediaInfo, encoders_available, keyframe_at_or_before, keyframes_in, probe
-from vidclip.presets import duration_warning, get_preset, plan_social
-from vidclip.timespec import (
+from lightbox import ClipError
+from lightbox.convert import TARGETS, plan_convert, run_convert
+from lightbox.cut import plan_cut, run_cut
+from lightbox.media import MediaInfo, encoders_available, keyframe_at_or_before, keyframes_in, probe
+from lightbox.presets import duration_warning, get_preset, plan_social
+from lightbox.timespec import (
     format_time,
     output_name,
     output_name_tagged,
@@ -213,15 +213,15 @@ def _run_conversion(args: argparse.Namespace, info: MediaInfo) -> int:
             written += 1
         except ClipError as exc:
             failed += 1
-            print(f"clip: {exc}", file=sys.stderr)
+            print(f"lightbox: {exc}", file=sys.stderr)
         except KeyboardInterrupt:
             if dst.exists():
                 dst.unlink()
-            print(f"clip: interrupted, removed {dst}", file=sys.stderr)
+            print(f"lightbox: interrupted, removed {dst}", file=sys.stderr)
             return 130
         except Exception as exc:  # noqa: BLE001 - never show a traceback
             failed += 1
-            print(f"clip: {exc}", file=sys.stderr)
+            print(f"lightbox: {exc}", file=sys.stderr)
 
     if not args.quiet and not args.dry_run:
         total = written + failed
@@ -251,7 +251,7 @@ def _progress_callback(info: MediaInfo, plan) -> Callable[[dict], None]:
         eta = None
         if speed and speed > 0:
             eta = (target - out) / speed
-        parts = [f"\rclip: {pct:5.1f}%"]
+        parts = [f"\rlightbox: {pct:5.1f}%"]
         if speed:
             parts.append(f"  {speed:.2f}x")
         if eta is not None and not frame.get("done"):
@@ -305,7 +305,7 @@ def _keyframes_block(info: MediaInfo, t: float) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="clip",
+        prog="lightbox",
         description="Cut a piece out of a video. Default is a lossless stream copy: "
         "bit-for-bit the same quality as the source, done in under a second.",
     )
@@ -360,12 +360,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run(argv)
     except ClipError as exc:
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
     except Exception as exc:  # noqa: BLE001 - never show a traceback
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 1
 
 
@@ -417,7 +417,7 @@ def _run(argv: list[str] | None) -> int:
                 start_text, end_text = s, ""
         else:
             start_text = end_text = ""
-        from clip_tui import run_editor
+        from lightbox.tui import run_editor
         return run_editor(Path(args.input), start_text, end_text,
                           Path(args.out) if args.out else None)
 
@@ -428,7 +428,7 @@ def _run(argv: list[str] | None) -> int:
         return 0
 
     if args.keyframes is not None:
-        from vidclip.timespec import parse_time
+        from lightbox.timespec import parse_time
 
         t = parse_time(args.keyframes)
         print(_keyframes_block(info, t))
@@ -474,15 +474,15 @@ def _run(argv: list[str] | None) -> int:
             written += 1
         except ClipError as exc:
             failed += 1
-            print(f"clip: {exc}", file=sys.stderr)
+            print(f"lightbox: {exc}", file=sys.stderr)
         except KeyboardInterrupt:
             if dst.exists():
                 dst.unlink()
-            print(f"clip: interrupted, removed {dst}", file=sys.stderr)
+            print(f"lightbox: interrupted, removed {dst}", file=sys.stderr)
             return 130
         except Exception as exc:  # noqa: BLE001 - never show a traceback
             failed += 1
-            print(f"clip: {exc}", file=sys.stderr)
+            print(f"lightbox: {exc}", file=sys.stderr)
 
     if not args.quiet and not args.dry_run:
         total = written + failed

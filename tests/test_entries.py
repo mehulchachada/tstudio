@@ -1,4 +1,4 @@
-"""Tests for vidclip.gallery.entries: classify, list_folder, summary, filter."""
+"""Tests for lightbox.gallery.entries: classify, list_folder, summary, filter."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip.gallery.entries import (
+from lightbox import ClipError
+from lightbox.gallery.entries import (
     classify,
     filter_entries,
     folder_summary,

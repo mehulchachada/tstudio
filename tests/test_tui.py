@@ -20,7 +20,7 @@ except ImportError:
     _HAS_TEXTUAL = False
 
 from fixture import ensure_sample, ffmpeg_available
-from vidclip.media import probe
+from lightbox.media import probe
 
 
 def _text(pilot, selector: str) -> str:
@@ -33,7 +33,7 @@ def _text(pilot, selector: str) -> str:
 
 
 def _app(start: str, end: str, out: Path | None = None):
-    from clip_tui import _build_app
+    from lightbox.tui import _build_app
     info = probe(ensure_sample("dense"))
     return _build_app(info, start, end, out)
 
@@ -248,7 +248,7 @@ class TestTui(unittest.TestCase):
 
     def test_hdr_fixture_readout_says_tonemapped(self) -> None:
         async def scenario():
-            from clip_tui import _build_app
+            from lightbox.tui import _build_app
             info = probe(ensure_sample("hdr"))
             async with _build_app(info, "0", "2", None).run_test() as pilot:
                 await pilot.pause()
@@ -275,7 +275,7 @@ class TestTui(unittest.TestCase):
         self._run(scenario())
 
     def test_convert_writes_a_file(self) -> None:
-        from vidclip.media import encoders_available
+        from lightbox.media import encoders_available
         if "libx264" not in encoders_available():
             self.skipTest("libx264 not available")
         tmp = Path(tempfile.mkdtemp())

@@ -7,7 +7,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from vidclip import ClipError
+from lightbox import ClipError
 
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi", ".wmv", ".flv", ".ts"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".avif"}

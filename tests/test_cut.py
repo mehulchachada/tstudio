@@ -1,4 +1,4 @@
-"""Tests for vidclip.cut: command shape, snapping, and real cuts."""
+"""Tests for lightbox.cut: command shape, snapping, and real cuts."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 import fixture
-from vidclip import ClipError
-from vidclip.cut import CutPlan, plan_cut, run_cut
-from vidclip.media import encoders_available, probe
+from lightbox import ClipError
+from lightbox.cut import CutPlan, plan_cut, run_cut
+from lightbox.media import encoders_available, probe
 
 
 @unittest.skipUnless(fixture.ffmpeg_available(), "ffmpeg not on PATH")

@@ -1,4 +1,4 @@
-"""Tests for vidclip.gallery.favourites: persistence, toggle, recent, prune."""
+"""Tests for lightbox.gallery.favourites: persistence, toggle, recent, prune."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vidclip.gallery.favourites import Favourites
+from lightbox.gallery.favourites import Favourites
 
 
 class FavouritesTest(unittest.TestCase):

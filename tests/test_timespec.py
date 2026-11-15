@@ -1,4 +1,4 @@
-"""Tests for vidclip.timespec: time and range parsing, naming (pure logic)."""
+"""Tests for lightbox.timespec: time and range parsing, naming (pure logic)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip import timespec
+from lightbox import ClipError
+from lightbox import timespec
 
 
 class ParseTimeAccepted(unittest.TestCase):

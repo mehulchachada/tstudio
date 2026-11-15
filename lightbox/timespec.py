@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from vidclip import ClipError
+from lightbox import ClipError
 
 _PLAIN = re.compile(r"^\d*\.?\d+$")
 _COLON_FIELD = re.compile(r"^\d+(\.\d+)?$")

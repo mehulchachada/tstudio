@@ -7,7 +7,7 @@ import ctypes.wintypes
 import sys
 from pathlib import Path
 
-from vidclip import ClipError
+from lightbox import ClipError
 
 FO_DELETE = 3
 FOF_SILENT = 0x0004

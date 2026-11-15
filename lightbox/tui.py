@@ -19,12 +19,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from vidclip import ClipError
-from vidclip.media import MediaInfo, probe
+from lightbox import ClipError
+from lightbox.media import MediaInfo, probe
 
 # Reuse the exact formatting helpers the CLI already ships, so the TUI shows
 # the same numbers the user sees from `clip --info`.
-from clip import _ENCODERS, _fmt_size, _header_lines
+from lightbox.cli import _ENCODERS, _fmt_size, _header_lines
 
 
 def _fmt_command(command: list[str]) -> str:
@@ -56,7 +56,7 @@ def _run(argv: list[str] | None = None) -> int:
         a = args[i]
         if a in ("--out", "-o"):
             if i + 1 >= len(args):
-                print("clip: --out needs a path", file=sys.stderr)
+                print("lightbox: --out needs a path", file=sys.stderr)
                 return 2
             out_path = Path(args[i + 1])
             i += 2
@@ -64,7 +64,7 @@ def _run(argv: list[str] | None = None) -> int:
             print(_usage())
             return 0
         elif a.startswith("-"):
-            print(f"clip: unknown option {a}\n", file=sys.stderr)
+            print(f"lightbox: unknown option {a}\n", file=sys.stderr)
             print(_usage(), file=sys.stderr)
             return 2
         else:
@@ -72,7 +72,7 @@ def _run(argv: list[str] | None = None) -> int:
             i += 1
 
     if not (1 <= len(positional) <= 3):
-        print("clip: expected a video file, optional START and END\n", file=sys.stderr)
+        print("lightbox: expected a video file, optional START and END\n", file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
 
@@ -81,13 +81,13 @@ def _run(argv: list[str] | None = None) -> int:
     end_text = positional[2] if len(positional) > 2 else ""
 
     try:
-        from vidclip.media import probe
+        from lightbox.media import probe
         info = probe(video)
     except ClipError as exc:
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -126,11 +126,11 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
         Static,
     )
 
-    from vidclip.cut import plan_cut, run_cut
-    from vidclip.convert import plan_convert, run_convert, TARGETS
-    from vidclip.presets import PRESETS, duration_warning, get_preset, plan_social
-    from vidclip.media import encoders_available, keyframe_at_or_before
-    from vidclip.timespec import format_time, output_name, parse_time, resolve_relative, unique_name
+    from lightbox.cut import plan_cut, run_cut
+    from lightbox.convert import plan_convert, run_convert, TARGETS
+    from lightbox.presets import PRESETS, duration_warning, get_preset, plan_social
+    from lightbox.media import encoders_available, keyframe_at_or_before
+    from lightbox.timespec import format_time, output_name, parse_time, resolve_relative, unique_name
 
     available = encoders_available()
     encoders = ["auto"] + [e for e in _ENCODERS if e != "auto" and e in available]
@@ -630,12 +630,12 @@ def _handle_errors(fn: Callable[[], int]) -> int:
     try:
         return fn()
     except ClipError as exc:
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
     except Exception as exc:  # noqa: BLE001 - never show a traceback
-        print(f"clip: {exc}", file=sys.stderr)
+        print(f"lightbox: {exc}", file=sys.stderr)
         return 1
 
 

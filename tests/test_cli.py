@@ -9,9 +9,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from clip import main
+from lightbox.cli import main
 from fixture import ensure_sample, ffmpeg_available, probe_duration
-from vidclip.media import encoders_available
+from lightbox.media import encoders_available
 
 
 def _run_main(argv: list[str]) -> tuple[int, str, str]:
@@ -106,7 +106,7 @@ class TestCli(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "1-2", "3-4", "-o", str(self.tmp / "x.mp4")])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertEqual(len(err.strip().splitlines()), 1)
 
     def test_bad_time(self) -> None:
@@ -239,7 +239,7 @@ class TestTuiFlag(unittest.TestCase):
 
     def _stub(self) -> "unittest.mock.MagicMock":
         from unittest import mock
-        patcher = mock.patch("clip_tui.run_editor", return_value=0)
+        patcher = mock.patch("lightbox.tui.run_editor", return_value=0)
         self.addCleanup(patcher.stop)
         return patcher.start()
 
@@ -248,7 +248,7 @@ class TestTuiFlag(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--dry-run"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertNotIn("Traceback", err)
 
     def test_tui_flag_rejects_info(self) -> None:
@@ -256,7 +256,7 @@ class TestTuiFlag(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--info"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertNotIn("Traceback", err)
 
     def test_tui_flag_rejects_keyframes(self) -> None:
@@ -264,7 +264,7 @@ class TestTuiFlag(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--keyframes", "2"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertNotIn("Traceback", err)
 
     def test_tui_flag_rejects_quiet(self) -> None:
@@ -272,7 +272,7 @@ class TestTuiFlag(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--quiet"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertNotIn("Traceback", err)
 
     def test_tui_flag_rejects_two_ranges(self) -> None:
@@ -280,7 +280,7 @@ class TestTuiFlag(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "1-2", "3-4", "--tui"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertNotIn("Traceback", err)
 
     def test_tui_flag_splits_a_range(self) -> None:
@@ -347,7 +347,7 @@ class TestConversionFlags(unittest.TestCase):
 
     def _stub(self) -> "unittest.mock.MagicMock":
         from unittest import mock
-        patcher = mock.patch("clip.run_convert", return_value=0.5)
+        patcher = mock.patch("lightbox.cli.run_convert", return_value=0.5)
         self.addCleanup(patcher.stop)
         return patcher.start()
 
@@ -356,7 +356,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--to", "240p", "--for", "shorts"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--to", err)
         self.assertIn("--for", err)
         self.assertNotIn("Traceback", err)
@@ -366,7 +366,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--fit", "crop"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--fit", err)
         self.assertIn("--for", err)
         self.assertNotIn("Traceback", err)
@@ -376,7 +376,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--hdr", "sdr"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--hdr", err)
         self.assertIn("--to", err)
         self.assertNotIn("Traceback", err)
@@ -386,7 +386,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--fps", "30"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--fps", err)
         self.assertIn("--to", err)
         self.assertNotIn("Traceback", err)
@@ -396,7 +396,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--exact", "--to", "240p"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--exact", err)
         self.assertNotIn("Traceback", err)
 
@@ -405,7 +405,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--exact", "--for", "shorts"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--exact", err)
         self.assertNotIn("Traceback", err)
 
@@ -414,7 +414,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--to", "240p"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--tui", err)
         self.assertNotIn("Traceback", err)
 
@@ -423,7 +423,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--tui", "--for", "shorts"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--tui", err)
         self.assertNotIn("Traceback", err)
 
@@ -440,7 +440,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "2-4", "--encoder", "libx264"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         self.assertIn("--encoder", err)
         self.assertNotIn("Traceback", err)
 
@@ -502,7 +502,7 @@ class TestConversionFlags(unittest.TestCase):
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--to", "999p"])
         self.assertEqual(code, 2)
-        self.assertTrue(err.startswith("clip: "), err)
+        self.assertTrue(err.startswith("lightbox: "), err)
         for target in ("2160p", "1440p", "1080p", "720p", "480p", "360p", "240p"):
             self.assertIn(target, err)
         self.assertNotIn("Traceback", err)
@@ -510,7 +510,7 @@ class TestConversionFlags(unittest.TestCase):
     def test_duration_warning_is_printed_not_fatal(self) -> None:
         from unittest import mock
         self._stub()
-        patcher = mock.patch("clip.duration_warning", return_value="this preset is capped at 60s")
+        patcher = mock.patch("lightbox.cli.duration_warning", return_value="this preset is capped at 60s")
         self.addCleanup(patcher.stop)
         patcher.start()
         dense = ensure_sample("dense")
@@ -534,7 +534,7 @@ class TestConversionFlags(unittest.TestCase):
         self.assertEqual(code, 0, err)
         files = list(self.tmp.iterdir())
         self.assertEqual(len(files), 1)
-        from vidclip.media import probe
+        from lightbox.media import probe
         info = probe(files[0])
         self.assertEqual(info.video.height, 240)
         self.assertAlmostEqual(info.duration, 2.0, delta=0.3)
@@ -546,7 +546,7 @@ class TestConversionFlags(unittest.TestCase):
         self.assertEqual(code, 0, err)
         files = list(self.tmp.iterdir())
         self.assertEqual(len(files), 1)
-        from vidclip.media import probe
+        from lightbox.media import probe
         info = probe(files[0])
         self.assertEqual((info.video.width, info.video.height), (1080, 1920))
         self.assertNotEqual(info.video.color_transfer, "smpte2084")
