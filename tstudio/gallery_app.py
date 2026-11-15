@@ -147,6 +147,14 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.reactive import reactive
+    from tstudio.gallery.sixel import sixel_supported
+    from tstudio.gallery.sixel_widget import build_image_view
+
+    # Decided once per run: pixels if the terminal answers for them, else the
+    # half-block art, which works on any terminal at all.
+    _SIXEL = sixel_supported()
+    _ImageView = build_image_view() if _SIXEL else None
+
     from textual.widgets import DataTable, Input, ListItem, ListView, Static
     from textual.worker import get_current_worker
 
@@ -258,6 +266,8 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
                 yield DataTable(id="files")
                 with Vertical(id="preview"):
                     yield Static(_EMPTY_PREVIEW, id="preview-art")
+                    if _SIXEL:
+                        yield _ImageView(id="preview-image")
                     yield Static("", id="preview-meta")
             yield Static("", id="status")
 
@@ -379,18 +389,42 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
                     return "folder" if entry.is_parent else entry.kind
             return None
 
-        def _set_preview(self, message: str, meta: list[str], *, error: bool = False) -> None:
-            """Put a plain message (or an error) in the pane."""
-            style = branding.RED if error else branding.GREY
-            self.query_one("#preview-art", Static).update(Text(message, style=style))
-            self.query_one("#preview-meta", Static).update(Text("\n".join(meta), style=branding.GREY))
+        def _image_widget(self):
+            """The sixel widget, or None when this terminal gets the art instead."""
+            if not _SIXEL:
+                return None
+            found = self.query("#preview-image")
+            return found.first() if found else None
 
-        def _show_preview(self, path: Path, art: list[str], meta: list[str]) -> None:
+        def _set_preview(self, message: str, meta: list[str], *, error: bool = False) -> None:
+            """Put a plain message (or an error) in the pane, and clear any picture."""
+            style = branding.RED if error else branding.GREY
+            art_widget = self.query_one("#preview-art", Static)
+            art_widget.display = True
+            art_widget.update(Text(message, style=style))
+            self.query_one("#preview-meta", Static).update(Text("\n".join(meta), style=branding.GREY))
+            image = self._image_widget()
+            if image is not None:
+                image.source = None
+                image.display = False
+
+        def _show_preview(self, path: Path, art: list[str], meta: list[str],
+                          at: float | None = None) -> None:
             """Paint finished worker output, unless the cursor has moved on since."""
             if path != self.selected:
                 return
-            picture = Text.from_ansi("\n".join(art)) if art else Text("")
-            self.query_one("#preview-art", Static).update(picture)
+            image = self._image_widget()
+            if image is not None:
+                # real pixels: the Static steps aside so it cannot paint over them
+                self.query_one("#preview-art", Static).update(Text(""))
+                self.query_one("#preview-art", Static).display = False
+                image.display = True
+                image.at = at
+                image.source = path
+            else:
+                picture = Text.from_ansi("\n".join(art)) if art else Text("")
+                self.query_one("#preview-art", Static).display = True
+                self.query_one("#preview-art", Static).update(picture)
             self.query_one("#preview-meta", Static).update(Text("\n".join(meta), style=branding.GREY))
 
         def _show_preview_error(self, path: Path, message: str) -> None:
@@ -403,21 +437,22 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             """ffmpeg and ImageMagick in a thread: seconds of work, never on the event loop."""
             worker = get_current_worker()
             try:
+                at = None
                 if kind == "image":
-                    art = art_for(path, cols, rows)
                     meta = [human_size(path.stat().st_size)]
+                    art = [] if _SIXEL else art_for(path, cols, rows)
                 else:
                     info = probe(path)
                     meta = _video_meta_lines(info)
                     at = info.duration / 2 if info.duration else None
-                    art = art_for(path, cols, rows, at=at)
+                    art = [] if _SIXEL else art_for(path, cols, rows, at=at)
             except ClipError as exc:
                 self._from_thread(worker, self._show_preview_error, path, str(exc))
                 return
             except OSError as exc:
                 self._from_thread(worker, self._show_preview_error, path, str(exc))
                 return
-            self._from_thread(worker, self._show_preview, path, art, meta)
+            self._from_thread(worker, self._show_preview, path, art, meta, at)
 
         def _from_thread(self, worker: object, callback, *args: object) -> None:
             """call_from_thread, but silent when the worker was superseded or the app is gone."""

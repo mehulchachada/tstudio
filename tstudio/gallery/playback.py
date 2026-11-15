@@ -7,6 +7,10 @@ the gallery falls back to scrubbing, which steps through still frames rendered b
 
 from __future__ import annotations
 
+import sys
+
+import os
+
 import math
 import shutil
 import subprocess
@@ -116,3 +120,46 @@ def scrub_frame(
     # len(times) is steps except for a zero-length clip, where it is 1.
     at = times[index % len(times)]
     return art_for(path, cols, rows, at=at)
+
+
+def player_command(path: Path, *, in_terminal: bool = False) -> list[str]:
+    """argv for watching `path` in mpv.
+
+    `in_terminal=True` draws the video as text in the terminal (--vo=tct),
+    which is a neat trick for a peek at the source. For reviewing a finished
+    clip you want the real thing, so the default opens mpv's own window.
+    """
+    _require_file(path)
+    if in_terminal:
+        return ["mpv", "--vo=tct", "--really-quiet", str(path)]
+    return ["mpv", "--really-quiet", str(path)]
+
+
+def open_in_player(path: Path) -> str:
+    """Open the clip in mpv, or hand it to whatever the OS plays video with.
+
+    Returns the name of what was used, so the caller can say so. Raises
+    ClipError only when nothing at all could open it - a missing mpv is not
+    an error, it is a fallback.
+    """
+    _require_file(path)
+    if mpv_available():
+        try:
+            subprocess.Popen(player_command(path),
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return "mpv"
+        except OSError:
+            pass  # fall through to the system player
+    if sys.platform == "win32":
+        try:
+            os.startfile(str(path))  # noqa: S606 - the OS picks the handler
+            return "the system player"
+        except OSError as exc:
+            raise ClipError(f"could not open {path.name}: {exc}") from exc
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    try:
+        subprocess.Popen([opener, str(path)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return "the system player"
+    except OSError as exc:
+        raise ClipError(f"could not open {path.name}: {exc}") from exc

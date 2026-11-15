@@ -235,6 +235,8 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             Binding("f5", "cut", "Cut", priority=True),
             Binding("f2", "toggle_preview", "Preview", priority=True),
             Binding("f3", "reset_inputs", "Reset", priority=True),
+            Binding("f4", "copy_command", "Copy cmd", priority=True),
+            Binding("f6", "play_output", "Play result", priority=True),
             Binding("ctrl+q", "quit", "Quit", priority=True),
         ]
 
@@ -245,6 +247,8 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             self.start_text = start_text
             self.end_text = end_text
             self.out_path = out_path
+            self._last_plan = None
+            self._last_output = None
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -363,6 +367,40 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
         def action_toggle_preview(self) -> None:
             self._toggle_preview()
 
+        def action_play_output(self) -> None:
+            """Watch the clip that was just written."""
+            if self._last_output is None:
+                self.notify("nothing written yet - cut something first",
+                            severity="warning")
+                return
+            try:
+                from tstudio.gallery.playback import open_in_player
+                used = open_in_player(self._last_output)
+            except Exception as exc:  # noqa: BLE001
+                self.notify(str(exc), title="could not play", severity="error")
+                return
+            self.notify(f"{self._last_output.name} in {used}", title="playing")
+
+        def action_copy_command(self) -> None:
+            """Put the ffmpeg command on the clipboard.
+
+            The panel hard-wraps a ~200 character command, so selecting it with
+            the mouse yields a line-broken, unrunnable paste. This hands over
+            the real one-line command instead.
+            """
+            plan = self._last_plan
+            if plan is None:
+                self.notify("nothing to copy yet", severity="warning")
+                return
+            line = _fmt_command(plan.command)
+            try:
+                from tstudio.gallery.clipboard import copy_text
+                copy_text(line)
+            except Exception as exc:  # noqa: BLE001 - clipboard is best effort
+                self.notify(str(exc), title="could not copy", severity="error")
+                return
+            self.notify(f"{len(line)} characters", title="ffmpeg command copied")
+
         def action_reset_inputs(self) -> None:
             """Restore the start/end fields to what the app opened with."""
             self.query_one("#start_input", Input).value = self.start_text
@@ -470,9 +508,11 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             try:
                 plan, dst = self._make_plan(start, end, lossless, encoder, quality, mute)
             except ClipError as exc:
+                self._last_plan = None
                 self._show_readout(f"plan error: {exc}", error=True)
                 self.query_one("#preview", Static).update("")
                 return
+            self._last_plan = plan
 
             lines: list[str] = []
             if task == "cut":
@@ -624,6 +664,7 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
 
         def _ui_done(self, dst: str, size: str) -> None:
             self.query_one("#bar", ProgressBar).progress = 1.0
+            self._last_output = Path(dst)
             name = Path(dst).name
             self.query_one("#status", Static).update(f"done -> {name}  ({size})")
             self.notify(f"{name} ({size})", title="written", severity="information")

@@ -219,3 +219,44 @@ class HintTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenInPlayerTests(unittest.TestCase):
+    """Watching the finished clip: mpv in its own window, else the OS player."""
+
+    def _file(self, tmp: str) -> Path:
+        f = Path(tmp) / "clip.mp4"
+        f.write_bytes(bytes(16))
+        return f
+
+    def test_windowed_command_has_no_terminal_video_output(self) -> None:
+        """Reviewing a result wants a real window, not terminal art."""
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = playback.player_command(self._file(tmp))
+            self.assertEqual(argv[0], "mpv")
+            self.assertNotIn("--vo=tct", argv)
+
+    def test_in_terminal_command_asks_for_tct(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = playback.player_command(self._file(tmp), in_terminal=True)
+            self.assertIn("--vo=tct", argv)
+
+    def test_uses_mpv_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            f = self._file(tmp)
+            with mock.patch.object(playback, "mpv_available", return_value=True),                  mock.patch.object(playback.subprocess, "Popen") as popen:
+                self.assertEqual(playback.open_in_player(f), "mpv")
+            self.assertEqual(popen.call_args[0][0][0], "mpv")
+
+    def test_falls_back_to_the_system_player(self) -> None:
+        """A missing mpv is a fallback, not an error."""
+        with tempfile.TemporaryDirectory() as tmp:
+            f = self._file(tmp)
+            with mock.patch.object(playback, "mpv_available", return_value=False),                  mock.patch.object(playback.sys, "platform", "win32"),                  mock.patch.object(playback.os, "startfile", create=True) as start:
+                self.assertEqual(playback.open_in_player(f), "the system player")
+            self.assertTrue(start.called)
+
+    def test_a_missing_file_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ClipError):
+                playback.open_in_player(Path(tmp) / "nope.mp4")

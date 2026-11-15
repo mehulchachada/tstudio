@@ -237,6 +237,29 @@ class TestGalleryApp(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_preview_uses_the_image_widget_when_sixel_is_available(self) -> None:
+        """With sixel, the picture goes to the ImageView, not the Static."""
+        tmp, fav = self._setup()
+        try:
+            with mock.patch("tstudio.gallery.sixel.sixel_supported", return_value=True):
+                async def scenario():
+                    async with _app(tmp, fav).run_test() as pilot:
+                        await pilot.pause()
+                        app = pilot.app
+                        image = app.query("#preview-image")
+                        self.assertTrue(image, "the image widget should be mounted")
+                        table = app.query_one("#files")
+                        names = _table_names(pilot)
+                        row = next(i for i, n in enumerate(names) if "shot.png" in n)
+                        table.move_cursor(row=row, column=0)
+                        await _settle(pilot)
+                        self.assertEqual(image.first().source, tmp / "shot.png")
+                        self.assertFalse(app.query_one("#preview-art").display)
+
+                self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_hidden_toggle(self) -> None:
         tmp, fav = self._setup()
         try:
@@ -424,6 +447,11 @@ class TestGalleryApp(unittest.TestCase):
 
     def test_preview_shows_the_picture_and_metadata(self) -> None:
         tmp, fav = self._setup()
+        # force the half-block path: this test asserts on block characters
+        sixel_off = mock.patch('tstudio.gallery.sixel.sixel_supported',
+                               return_value=False)
+        sixel_off.start()
+        self.addCleanup(sixel_off.stop)
         try:
             async def scenario():
                 with mock.patch("tstudio.gallery_app.art_for", side_effect=_fake_art) as art, \
@@ -463,6 +491,11 @@ class TestGalleryApp(unittest.TestCase):
 
     def test_preview_of_an_image_does_not_probe(self) -> None:
         tmp, fav = self._setup()
+        # force the half-block path: this test asserts on block characters
+        sixel_off = mock.patch('tstudio.gallery.sixel.sixel_supported',
+                               return_value=False)
+        sixel_off.start()
+        self.addCleanup(sixel_off.stop)
         try:
             async def scenario():
                 def boom(*a, **k):
