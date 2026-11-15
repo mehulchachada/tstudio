@@ -7,10 +7,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.convert import tonemap_filter
-from lightbox.gallery.entries import IMAGE_SUFFIXES, VIDEO_SUFFIXES
-from lightbox.media import probe
+from tstudio import ClipError
+from tstudio.convert import tonemap_filter
+from tstudio.gallery.entries import IMAGE_SUFFIXES, VIDEO_SUFFIXES
+from tstudio.media import probe
 
 
 def _default_cache_dir() -> Path:

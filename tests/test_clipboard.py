@@ -1,4 +1,4 @@
-"""Tests for lightbox.gallery.clipboard - nothing here may touch the real clipboard."""
+"""Tests for tstudio.gallery.clipboard - nothing here may touch the real clipboard."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from lightbox import ClipError
-from lightbox.gallery import clipboard
+from tstudio import ClipError
+from tstudio.gallery import clipboard
 
 
 def _ok(returncode: int = 0, stderr: str = "") -> subprocess.CompletedProcess:

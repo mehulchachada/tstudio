@@ -7,7 +7,7 @@ import ctypes.wintypes
 import sys
 from pathlib import Path
 
-from lightbox import ClipError
+from tstudio import ClipError
 
 FO_DELETE = 3
 FOF_SILENT = 0x0004

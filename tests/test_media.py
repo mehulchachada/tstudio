@@ -1,4 +1,4 @@
-"""Tests for lightbox.media against the real fixture files."""
+"""Tests for tstudio.media against the real fixture files."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 
 import fixture
-from lightbox import ClipError
-from lightbox.media import (
+from tstudio import ClipError
+from tstudio.media import (
     VideoStream,
     encoders_available,
     filters_available,

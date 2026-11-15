@@ -19,12 +19,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.media import MediaInfo, probe
+from tstudio import ClipError
+from tstudio.media import MediaInfo, probe
 
 # Reuse the exact formatting helpers the CLI already ships, so the TUI shows
 # the same numbers the user sees from `clip --info`.
-from lightbox.cli import _ENCODERS, _fmt_size, _header_lines
+from tstudio.cli import _ENCODERS, _fmt_size, _header_lines
 
 
 def _fmt_command(command: list[str]) -> str:
@@ -56,7 +56,7 @@ def _run(argv: list[str] | None = None) -> int:
         a = args[i]
         if a in ("--out", "-o"):
             if i + 1 >= len(args):
-                print("lightbox: --out needs a path", file=sys.stderr)
+                print("tstudio: --out needs a path", file=sys.stderr)
                 return 2
             out_path = Path(args[i + 1])
             i += 2
@@ -64,7 +64,7 @@ def _run(argv: list[str] | None = None) -> int:
             print(_usage())
             return 0
         elif a.startswith("-"):
-            print(f"lightbox: unknown option {a}\n", file=sys.stderr)
+            print(f"tstudio: unknown option {a}\n", file=sys.stderr)
             print(_usage(), file=sys.stderr)
             return 2
         else:
@@ -72,7 +72,7 @@ def _run(argv: list[str] | None = None) -> int:
             i += 1
 
     if not (1 <= len(positional) <= 3):
-        print("lightbox: expected a video file, optional START and END\n", file=sys.stderr)
+        print("tstudio: expected a video file, optional START and END\n", file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
 
@@ -81,13 +81,13 @@ def _run(argv: list[str] | None = None) -> int:
     end_text = positional[2] if len(positional) > 2 else ""
 
     try:
-        from lightbox.media import probe
+        from tstudio.media import probe
         info = probe(video)
     except ClipError as exc:
-        print(f"lightbox: {exc}", file=sys.stderr)
+        print(f"tstudio: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001
-        print(f"lightbox: {exc}", file=sys.stderr)
+        print(f"tstudio: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -126,106 +126,107 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
         Static,
     )
 
-    from lightbox.cut import plan_cut, run_cut
-    from lightbox.convert import plan_convert, run_convert, TARGETS
-    from lightbox.presets import PRESETS, duration_warning, get_preset, plan_social
-    from lightbox.media import encoders_available, keyframe_at_or_before
-    from lightbox.timespec import format_time, output_name, parse_time, resolve_relative, unique_name
+    from tstudio.cut import plan_cut, run_cut
+    from tstudio.convert import plan_convert, run_convert, TARGETS
+    from tstudio.presets import PRESETS, duration_warning, get_preset, plan_social
+    from tstudio.media import encoders_available, keyframe_at_or_before
+    from tstudio.timespec import format_time, output_name, parse_time, resolve_relative, unique_name
+    from tstudio.gallery import branding
 
     available = encoders_available()
     encoders = ["auto"] + [e for e in _ENCODERS if e != "auto" and e in available]
 
     class ClipApp(App):
-        TITLE = "vclip"
-        SUB_TITLE = "lossless video trimming"
+        TITLE = branding.NAME
+        SUB_TITLE = branding.TAGLINE
 
-        CSS = """
-        Screen {
+        CSS = f"""
+        Screen {{
             padding: 0 1;
-        }
-        Input {
+        }}
+        Input {{
             height: 1;
             border: none;
             padding: 0 1;
             background: $boost;
-        }
-        #quality {
+        }}
+        #quality {{
             width: 14;
-        }
+        }}
         #start_input,
-        #end_input {
+        #end_input {{
             width: 1fr;
-        }
-        #mute {
+        }}
+        #mute {{
             width: 16;
-        }
-        #file_panel {
+        }}
+        #file_panel {{
             height: auto;
-            border: round $primary;
+            border: round {branding.AMBER};
             padding: 0 1;
             margin-bottom: 0;
-        }
-        #range_panel {
+        }}
+        #range_panel {{
             height: auto;
-            border: round $primary;
+            border: round {branding.AMBER};
             padding: 0 1;
             margin-bottom: 0;
-        }
-        #output_panel {
+        }}
+        #output_panel {{
             height: auto;
-            border: round $primary;
+            border: round {branding.AMBER};
             padding: 0 1;
             margin-bottom: 0;
-        }
-        #readout_panel {
+        }}
+        #readout_panel {{
             height: auto;
             max-height: 5;
             border: round $success;
             padding: 0 1;
             margin-bottom: 0;
-        }
-        #readout_panel.error {
+        }}
+        #readout_panel.error {{
             border: round $error;
-        }
-        #readout {
+        }}
+        #readout {{
             height: auto;
             max-height: 3;
             padding: 0 1;
-        }
-        #preview_panel {
+        }}
+        #preview_panel {{
             height: auto;
             border: round $accent;
             padding: 0 1;
             margin-bottom: 1;
-        }
-        #preview {
+        }}
+        #preview {{
             height: auto;
             padding: 0 1;
-        }
-        .ctl_label {
+        }}
+        .ctl_label {{
             width: 10;
             padding: 0 0 0 1;
-        }
-        .ctl_row {
+        }}
+        .ctl_row {{
             height: auto;
             align: left middle;
-        }
-        #row_buttons {
+        }}
+        #row_buttons {{
             height: 3;
             align: left middle;
             margin-bottom: 1;
-        }
-        #btn_cut {
+        }}
+        #btn_cut {{
             margin-right: 1;
-        }
-        #bar {
+        }}
+        #bar {{
             height: 1;
             margin: 0 0 1 0;
-        }
-        #status {
+        }}
+        #status {{
             height: 1;
             padding: 0 1;
-        }
+        }}
         """
 
         BINDINGS = [
@@ -630,12 +631,12 @@ def _handle_errors(fn: Callable[[], int]) -> int:
     try:
         return fn()
     except ClipError as exc:
-        print(f"lightbox: {exc}", file=sys.stderr)
+        print(f"tstudio: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
     except Exception as exc:  # noqa: BLE001 - never show a traceback
-        print(f"lightbox: {exc}", file=sys.stderr)
+        print(f"tstudio: {exc}", file=sys.stderr)
         return 1
 
 

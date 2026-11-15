@@ -1,4 +1,4 @@
-"""Tests for lightbox.gallery.trash - Recycle Bin, never a permanent delete."""
+"""Tests for tstudio.gallery.trash - Recycle Bin, never a permanent delete."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from lightbox import ClipError
-from lightbox.gallery import trash
+from tstudio import ClipError
+from tstudio.gallery import trash
 
 
 def _fake_api(rc: int = 0, aborted: bool = False):

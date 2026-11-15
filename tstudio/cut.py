@@ -10,9 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.media import MediaInfo, encoders_available, keyframe_at_or_before
-from lightbox.timespec import format_time
+from tstudio import ClipError
+from tstudio.media import MediaInfo, encoders_available, keyframe_at_or_before
+from tstudio.timespec import format_time
 
 _FASTSTART_SUFFIXES = {".mp4", ".m4v", ".mov"}
 

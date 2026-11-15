@@ -6,8 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.gallery.entries import IMAGE_SUFFIXES
+from tstudio import ClipError
+from tstudio.gallery.entries import IMAGE_SUFFIXES
 
 _TIMEOUT = 20
 

@@ -1,4 +1,4 @@
-"""Tests for lightbox.gallery.thumbs: cache, frame extraction and ANSI art."""
+"""Tests for tstudio.gallery.thumbs: cache, frame extraction and ANSI art."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 from unittest import mock
 
 from fixture import ensure_sample, ffmpeg_available
-from lightbox import ClipError
-from lightbox.gallery import thumbs
+from tstudio import ClipError
+from tstudio.gallery import thumbs
 
 HAVE_FFMPEG = ffmpeg_available()
 HAVE_MAGICK = shutil.which("magick") is not None

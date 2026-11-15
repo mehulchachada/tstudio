@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.convert import ConvertPlan, resolve_range, tonemap_filter
-from lightbox.media import MediaInfo, encoders_available, filters_available, is_hdr
+from tstudio import ClipError
+from tstudio.convert import ConvertPlan, resolve_range, tonemap_filter
+from tstudio.media import MediaInfo, encoders_available, filters_available, is_hdr
 
 
 @dataclass(frozen=True)

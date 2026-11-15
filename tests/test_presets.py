@@ -1,4 +1,4 @@
-"""Command-shape and real-conversion tests for lightbox.presets."""
+"""Command-shape and real-conversion tests for tstudio.presets."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from unittest import mock
 
 from fixture import ffmpeg_available, ensure_sample, probe_duration
 
-from lightbox import ClipError
-from lightbox.convert import run_convert, tonemap_filter
-from lightbox.media import MediaInfo, VideoStream, is_hdr, probe
-from lightbox.presets import (
+from tstudio import ClipError
+from tstudio.convert import run_convert, tonemap_filter
+from tstudio.media import MediaInfo, VideoStream, is_hdr, probe
+from tstudio.presets import (
     PRESETS,
     Preset,
     duration_warning,
@@ -96,7 +96,7 @@ def _square_info(path: Path) -> MediaInfo:
 
 
 def _plan(info: MediaInfo, preset, **kwargs) -> "ConvertPlan":
-    with mock.patch("lightbox.presets.encoders_available",
+    with mock.patch("tstudio.presets.encoders_available",
                     return_value=frozenset({"h264_nvenc", "libx264"})):
         return plan_social(info, Path("out.mp4"), preset, **kwargs)
 

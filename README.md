@@ -1,194 +1,219 @@
-# vclip
+<div align="center">
 
-`vclip` cuts a piece out of a video file with one short command. By default it does a
-**lossless stream copy**: the clip is bit-for-bit the same quality as the source, and a
-4 GB cut takes under a second because nothing is re-encoded. It also converts clips -
-downscaling 4K to 1080p, tone-mapping HDR to SDR - and prepares them for social
-platforms like YouTube Shorts, Instagram Reels, and TikTok. It snaps the start to the
-nearest keyframe and tells you exactly where the cut landed and how far that is from the
-time you asked for.
+<img src="docs/hero.png" alt="tstudio" width="620">
+
+**Terminal video studio: browse clips as colour art, cut losslessly, tone-map HDR, export for Shorts.**
+
+</div>
+
+---
+
+`tstudio` cuts video **without re-encoding it**, so a clip is bit-for-bit the quality of the
+source — a 30-second cut from a 3.7 GB 4K capture takes under a second. It browses folders with
+real thumbnails drawn as coloured text, reads HDR10 correctly instead of washing it out to grey,
+and exports for YouTube Shorts, Instagram Reels, TikTok and X in a single command.
+
+It was built for NVIDIA ShadowPlay gameplay captures — 4K, 120 fps, HDR10, ~105 Mbps, several
+gigabytes for a few minutes — which is the case most tools handle badly.
+
+```bash
+tstudio raid.mp4 3:49                      # cut from 3:49 to the end, losslessly
+tstudio raid.mp4 3:49-4:19 --for shorts    # a vertical Shorts clip, tone-mapped
+tstudio raid.mp4 --to 1080p                # 4K down to 1080p, HDR preserved
+tstudio raid.mp4 --tui                     # the interactive editor
+```
+
+---
+
+## Pictures, in a terminal
+
+<img src="docs/terminal-art.png" alt="a 4K HDR frame rendered as coloured text" width="760">
+
+That is a frame of a 4K HDR video, drawn inside a terminal. Every character cell is one
+`▀` glyph carrying two 24-bit colours — the top pixel as foreground, the bottom as background.
+
+No sixel, no kitty protocol, no image libraries: ImageMagick decodes to a PPM, a few lines of
+Python parse it, and the result is ordinary styled text that any truecolor terminal renders.
+
+## HDR, done properly
+
+<img src="docs/hdr.jpg" alt="naive downscale versus tone-mapped" width="900">
+
+A 4K HDR10 capture uses the PQ transfer curve and the bt2020 colour space. Scale it naively and
+the PQ curve gets read as ordinary gamma: the result is the grey, desaturated picture on the left.
+Most quick conversions do exactly this.
+
+`tstudio` detects HDR from the transfer function and tone-maps with **libplacebo**, falling back to
+a **zscale** chain where libplacebo is missing. `--hdr keep` preserves HDR10 instead, and
+`--hdr sdr` forces the tone-mapped version.
+
+## Vertical without losing the frame
+
+<img src="docs/social.jpg" alt="pad versus crop framing" width="620">
+
+A 16:9 frame does not fit a 9:16 phone screen, so you choose:
+
+- **`--fit pad`** (default) — the whole frame over a blurred copy of itself. Nothing is lost.
+- **`--fit crop`** — fills the screen, at the cost of the left and right thirds, HUD included.
+
+The default never silently discards picture.
+
+## The editor
+
+<img src="docs/tui.png" alt="the tstudio TUI" width="900">
+
+`tstudio VIDEO --tui` opens an interactive editor over the same engine: set a range, pick cut /
+convert / social, see exactly which keyframe the cut will land on and what file it will write,
+then run it. `F5` cuts, `F2` toggles the ffmpeg command, `F3` resets, `Ctrl+Q` quits.
+
+---
 
 ## Install
 
-It is one folder, no dependencies - just Python 3.12 and ffmpeg on PATH (you already have
-both). The one optional extra is `textual`, needed only for the `--tui` editor; the CLI
-works without it. To make `vclip` work from anywhere, the wrapper is `vclip.cmd` in
-`C:\Users\mehul\.local\bin` (already on PATH):
+Python 3.12 and **ffmpeg** on PATH. Nothing else is required.
 
-    @echo off
-    rem vclip - lossless video trimming. Source: C:\Users\mehul\chats\vidclip
-    "C:\Program Files\Python312\python.exe" "C:\Users\mehul\chats\vidclip\clip.py" %*
+```bash
+git clone https://github.com/mehulchachada/tstudio.git
+cd tstudio
+python -m tstudio --help
+```
 
-The name is `vclip` rather than `clip` because Windows ships its own `clip.exe` for the
-clipboard and that one wins on PATH.
+For a `tstudio` command anywhere, put a wrapper on your PATH. On Windows:
 
-Claude set that up for you.
+```bat
+@echo off
+set "PYTHONPATH=C:\path\to\tstudio;%PYTHONPATH%"
+python -m tstudio %*
+```
 
-## Use
+On Linux or macOS:
 
-    vclip video.mp4 3:49
-    Cut from 3:49 to the end of the file. The output lands beside the input, named
-    video_3-49_to_end.mp4. This is the ShadowPlay case: read the time off the player,
-    type it, done.
+```bash
+#!/usr/bin/env bash
+PYTHONPATH="/path/to/tstudio:$PYTHONPATH" exec python3 -m tstudio "$@"
+```
 
-    vclip video.mp4 3:49-4:30
-    Cut a specific window. The output is video_3-49_to_4-30.mp4.
+The TUI additionally needs [Textual](https://github.com/Textualize/textual). It is optional — the
+command line works without it:
 
-    vclip video.mp4 1:00-1:30 5:00-5:45 9:12
-    Several ranges in one command: two clips and one "to the end" clip, written in the
-    order given.
+```bash
+pip install textual
+```
 
-    vclip video.mp4 "first 20%"
-    vclip video.mp4 "last 45s"
-    vclip video.mp4 "around 3:49"
-    Relative ranges, resolved against the file's own length: "first N%" / "first Ns"
-    from the top, "last N%" / "last Ns" up to the end, or "around T" for a window
-    centred on T (5 s either side by default). Size the window explicitly with
-    "around 3:49 +10s" (10 s each way) or "around 3:49 +10s-15s" (10 s before, 15 s
-    after). Both % and h/m/s/ms units are understood, and everything is clamped to the
-    file, so "last 9999s" on a 2 m clip just gives you the whole tail.
+## Usage
 
-    vclip video.mp4 3:49 -O D:\clips
-    Write the output into D:\clips instead of beside the input. Handy when the
-    recording lives on a drive you do not want to fill up.
+### Cutting — lossless by default
 
-    vclip video.mp4 --info
-    What the file is: resolution, fps, codecs, bitrates, size, and how far apart the
-    keyframes are. No cutting.
+```bash
+tstudio raid.mp4 3:49                        # 3:49 to the end
+tstudio raid.mp4 3:49-4:30                   # a range
+tstudio raid.mp4 1:00-1:05 2:00-2:05 9:12    # several clips in one command
+tstudio raid.mp4 "last 45s"                  # relative to the file's length
+tstudio raid.mp4 "first 20%"
+tstudio raid.mp4 "around 3:49 +10s-15s"
+```
 
-    vclip video.mp4 3:49 --dry-run
-    Print the exact ffmpeg command that would run, without running it. Read it, copy
-    it, or check the tool is doing what you expect.
+Times accept `90`, `1:30`, `1:02:03.5`, `2m30s`, `500ms`. Relative forms contain spaces, so quote
+them.
 
-    vclip video.mp4 3:49 --exact --encoder hevc_nvenc -q 19
-    Re-encode so the cut starts exactly at 3:49.000 instead of snapping to a keyframe.
-    Costs quality and time; see below for when it is worth it.
+A stream copy can only begin on a keyframe, so the start snaps to the nearest one at or before the
+time you asked for — and `tstudio` tells you how far it moved rather than hiding it:
 
-Other options: `-o PATH` for an exact destination name (one range only), `--mute` to
-drop the audio, `--overwrite` to replace an existing output, `--quiet` for just the
-output path.
+```
+asked    3:49.000 -> end
+cutting  3:48.822 -> 5:00.180   (nearest keyframe, 0.178s earlier)
+length   1:11.357   lossless stream copy
+```
 
-## Convert
+Use `--exact` when the start must land on an exact frame; that re-encodes, which is the only way.
 
-`--to` re-encodes the clip at a lower resolution. It only goes down - asking to go up
-raises an error - and the width follows the source's aspect ratio, so an ultrawide file
-stays ultrawide.
+### Converting
 
-    --to TARGET     2160p, 1440p, 1080p, 720p, 480p, 360p, 240p
-    --hdr MODE      auto (default) | keep | sdr      (only with --to)
-    --fps N         output frame rate                (only with --to)
+```bash
+tstudio raid.mp4 --to 1080p                  # keeps HDR if the source has it
+tstudio raid.mp4 --to 1080p --hdr sdr        # tone-map down to SDR
+tstudio raid.mp4 3:49-4:19 --to 720p --fps 30
+```
 
-    vclip raid.mp4 3:49-4:19 --to 1080p
-    Downscale a 4K clip to 1080p. `--hdr auto` (the default) keeps HDR when the source
-    is HDR; here it would, so the output stays HDR10.
+Targets: `2160p 1440p 1080p 720p 480p 360p 240p`. Downscale only; the width follows the source's
+aspect ratio, so ultrawide stays ultrawide.
 
-    vclip raid.mp4 3:49-4:19 --to 1080p --hdr sdr
-    Same downscale, but tone-mapped down to SDR. Use this when the destination cannot
-    show HDR.
+### Social export
 
-    vclip raid.mp4 3:49-4:19 --to 1080p --hdr keep
-    Keep HDR, and fail on an SDR source rather than inventing HDR. `auto` is the
-    sensible default; `keep` is for when you want the failure.
+```bash
+tstudio raid.mp4 3:49-4:19 --for shorts --fit crop
+tstudio raid.mp4 --for reels
+tstudio raid.mp4 --for x
+```
 
-    vclip raid.mp4 3:49-4:19 --to 720p --fps 60
-    Downscale and cap the frame rate at 60. Your captures are 120 fps; most players
-    and platforms do not need that.
+| Preset | Size | Warns past |
+|---|---|---|
+| `shorts` | 1080×1920 | 180 s |
+| `reels` | 1080×1920 | 90 s |
+| `tiktok` | 1080×1920 | 600 s |
+| `x` | 1920×1080 | 140 s |
+| `square` | 1080×1080 | 60 s |
 
-`--to` cannot be combined with `--for` (see below) or with `--exact`, because a
-conversion is already a re-encode. It accepts a RANGE, so it converts only that part of
-the file, in one ffmpeg pass with no temporary file.
+Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. Every preset outputs SDR H.264 +
+AAC with `+faststart`, capped at 60 fps. Going over a platform's limit prints a warning, not an
+error.
 
-## Post it somewhere
+Both `--to` and `--for` accept a range and run in **one ffmpeg pass** — no multi-gigabyte
+intermediate file.
 
-`--for` renders a clip in a platform's shape and codec, ready to upload. Every preset
-outputs SDR H.264 + AAC with `+faststart`, and caps the frame rate at 60 - your
-captures are 120 fps. The duration limits are what the platforms allowed in November
-2026; they change, and going over prints a warning rather than failing.
+### Looking without converting
 
-    --for PRESET    shorts | reels | tiktok | x | square
-    --fit MODE      pad (default) | crop              (only with --for)
+```bash
+tstudio raid.mp4 --info              # streams, bitrates, keyframe spacing
+tstudio raid.mp4 --keyframes 3:49    # marks the one a lossless cut would use
+tstudio raid.mp4 3:49 --dry-run      # print the ffmpeg command, write nothing
+```
 
-| Preset | Platform            | Size      | Warns over |
-|--------|---------------------|-----------|------------|
-| shorts | YouTube Shorts      | 1080x1920 | 180 s      |
-| reels  | Instagram Reels     | 1080x1920 | 90 s       |
-| tiktok | TikTok              | 1080x1920 | 600 s      |
-| x      | X (Twitter)         | 1920x1080 | 140 s      |
-| square | Square (feed posts) | 1080x1080 | 60 s       |
+### Options
 
-Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `reels`, `twitter`.
+| | |
+|---|---|
+| `-o PATH` | destination (single range only) |
+| `-O DIR` | write outputs into DIR |
+| `--exact` | re-encode so the cut starts exactly where asked |
+| `--encoder` | `auto` · `hevc_nvenc` · `h264_nvenc` · `libx265` · `libx264` |
+| `-q N` | crf/cq, lower is better |
+| `--mute` | drop audio |
+| `--overwrite` | replace instead of writing `_2` |
+| `--quiet` | print only the output path |
 
-`pad` puts the whole frame on a blurred copy of itself, so nothing is lost but the
-picture sits in the middle third of a phone screen. `crop` fills the screen and throws
-away the left and right thirds, including any HUD out there. `pad` is the default
-because it never silently discards picture.
+Nothing is ever overwritten by default — a repeat run writes `_2`.
 
-    vclip raid.mp4 3:49-4:19 --for shorts --fit crop
-    A 30-second vertical clip from the 3.68 GB capture: 132 MB, 1080x1920, and it took
-    28 seconds to render. A lossless cut of the same window is still under a second.
+Exit codes: `0` fine · `2` bad input (one line, no traceback) · `1` unexpected · `130` interrupted.
 
-`--for` cannot be combined with `--to` or with `--exact`, for the same reason as
-above. It accepts a RANGE, so it converts only that part of the file.
+## How it is built
 
-## HDR
+```
+tstudio/
+  cli.py          argument parsing, output, exit codes
+  tui.py          the Textual editor (imports textual lazily)
+  timespec.py     time and range parsing, output naming   — pure, no ffmpeg
+  media.py        ffprobe: streams, duration, keyframes, HDR detection
+  cut.py          lossless and exact cutting
+  convert.py      resolution and colour conversion, tone-mapping
+  presets.py      the social platform table
+  gallery/        folder listing, favourites, thumbnails, clipboard, trash, branding
+```
 
-Your ShadowPlay captures are HDR10: bt2020 colour, PQ curve, 10-bit. A naive downscale
-makes them grey and washed out, because the PQ curve gets read as ordinary gamma. So
-the tool tone-maps when it converts: with libplacebo when it is available, and a zscale
-chain otherwise. The social presets are always SDR, because the platforms are. `--to`
-keeps HDR by default (`--hdr auto`), so a plain downscale of an HDR clip stays HDR
-unless you ask for `--hdr sdr`.
+The package needs only the standard library. Textual is imported inside the TUI's builder, so the
+command line never depends on it.
 
-## Why the start time moves
+## Tests
 
-A stream copy cannot start on an arbitrary frame: it can only start on a keyframe,
-because the frames between keyframes are stored as differences from the last keyframe.
-So when you ask for 3:49, the tool finds the last keyframe at or before 3:49 and starts
-there. Your ShadowPlay recordings have keyframes every 0.25 s, so a cut can land at
-most 0.25 s early - you will see a note like `(nearest keyframe, 0.177s earlier)`.
-Other sources can have keyframes 2-10 s apart, where the drift is much bigger, which is
-why the tool always prints the real start time and the drift instead of pretending the
-cut is where you asked.
+```bash
+python -m unittest discover -s tests -t tests
+```
 
-## When to use --exact
+261 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
+including a genuine **HDR10** fixture — and the suite performs actual cuts and conversions against
+them, then probes the results. The TUI has a layout test that fails if any widget leaves a
+100×34 terminal.
 
-`--exact` re-encodes the clip, which is the only way to start exactly on the frame you
-asked for. On a 4K120 HEVC file it costs real time (a minute of footage takes a few
-minutes even on an RTX 5090) and loses a little quality, however high the bitrate. For
-almost everything - trimming gameplay, sharing a moment, cleaning up a recording - the
-default lossless copy is better: the drift is a quarter of a second at most, and the
-quality is untouched.
+## Licence
 
-While it runs, `--exact` reports progress on stderr, one line per update:
-`clip: 42.3%  3.71x  eta 18s` — percent of the clip encoded, current speed relative to
-real time, and the estimated seconds left. It ends with `clip: done`. The lossless
-copy is too fast to bother with, so this only appears when you actually re-encode (and
-is silenced by `--quiet`).
-
-## TUI
-
-The interactive editor is the new way in:
-
-    vclip video.mp4 --tui
-
-It opens a single-clip editor built on Textual. There is a file panel, a Range panel
-with Start and End, an Output panel with mode, encoder, quality and mute, and a
-"What will happen" panel that names the keyframe the cut will snap to and the output
-file. `Cut (F5)` runs it and fills a progress bar; `Preview (F2)` toggles the exact
-ffmpeg command. Keys: `F5` cut, `F2` toggle the ffmpeg command, `F3` reset the inputs,
-`Ctrl+Q` quit.
-
-`python clip_tui.py VIDEO` still works if you prefer it. It still needs `textual`,
-which stays an optional dependency - the CLI works without it:
-
-    pip install textual
-
-The TUI edits one clip losslessly; `--to` and `--for` are command-line only for now.
-
-## Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | everything written |
-| 2 | a usage error or a failed cut (one line on stderr) |
-| 1 | anything else (ffmpeg missing, unexpected failure) |
+MIT — see [LICENSE](LICENSE).

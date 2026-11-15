@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from lightbox import ClipError
+from tstudio import ClipError
 
 
 @dataclass(frozen=True)

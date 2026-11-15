@@ -1,4 +1,4 @@
-"""Tests for lightbox.gallery.entries: classify, list_folder, summary, filter."""
+"""Tests for tstudio.gallery.entries: classify, list_folder, summary, filter."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox.gallery.entries import (
+from tstudio import ClipError
+from tstudio.gallery.entries import (
     classify,
     filter_entries,
     folder_summary,

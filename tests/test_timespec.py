@@ -1,4 +1,4 @@
-"""Tests for lightbox.timespec: time and range parsing, naming (pure logic)."""
+"""Tests for tstudio.timespec: time and range parsing, naming (pure logic)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lightbox import ClipError
-from lightbox import timespec
+from tstudio import ClipError
+from tstudio import timespec
 
 
 class ParseTimeAccepted(unittest.TestCase):

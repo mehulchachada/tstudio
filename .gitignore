@@ -8,3 +8,13 @@ tests/_fixtures/
 # Local scratch output
 *.tmp
 *.building.*
+
+# Local tool settings, not part of the project
+.qwen/
+.vscode/
+.idea/
+
+# Virtualenvs
+.venv/
+venv/
+env/

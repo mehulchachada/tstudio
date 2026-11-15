@@ -1,4 +1,4 @@
-"""Command-shape and real-conversion tests for lightbox.convert."""
+"""Command-shape and real-conversion tests for tstudio.convert."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from unittest import mock
 
 from fixture import ffmpeg_available, ensure_sample, probe_duration, probe_video_codec
 
-from lightbox import ClipError
-from lightbox.convert import TARGETS, plan_convert, run_convert
-from lightbox.media import MediaInfo, VideoStream, encoders_available, probe
+from tstudio import ClipError
+from tstudio.convert import TARGETS, plan_convert, run_convert
+from tstudio.media import MediaInfo, VideoStream, encoders_available, probe
 
 
 def _hdr_info(path: Path) -> MediaInfo:
@@ -68,7 +68,7 @@ def _sdr_info(path: Path) -> MediaInfo:
 # encoder-availability probe never runs.
 class PlanShapeTests(unittest.TestCase):
     def _plan(self, info, **kwargs):
-        with mock.patch("lightbox.convert._pick_encoder", return_value="hevc_nvenc"):
+        with mock.patch("tstudio.convert._pick_encoder", return_value="hevc_nvenc"):
             return plan_convert(info, Path("out.mp4"), **kwargs)
 
     def test_hdr_auto_keeps_hdr(self):
@@ -85,7 +85,7 @@ class PlanShapeTests(unittest.TestCase):
 
     def test_tonemapped_output_is_not_tagged_hdr(self):
         with mock.patch(
-            "lightbox.convert.filters_available",
+            "tstudio.convert.filters_available",
             return_value=frozenset({"libplacebo", "zscale"}),
         ):
             plan = self._plan(_hdr_info(Path("in.mp4")), hdr="sdr")
@@ -98,7 +98,7 @@ class PlanShapeTests(unittest.TestCase):
 
     def test_zscale_fallback(self):
         with mock.patch(
-            "lightbox.convert.filters_available",
+            "tstudio.convert.filters_available",
             return_value=frozenset({"zscale"}),
         ):
             plan = self._plan(_hdr_info(Path("in.mp4")), hdr="sdr")
@@ -110,7 +110,7 @@ class PlanShapeTests(unittest.TestCase):
 
     def test_libplacebo_does_its_own_scaling(self):
         with mock.patch(
-            "lightbox.convert.filters_available",
+            "tstudio.convert.filters_available",
             return_value=frozenset({"libplacebo"}),
         ):
             plan = self._plan(_hdr_info(Path("in.mp4")), hdr="sdr")
@@ -131,7 +131,7 @@ class PlanShapeTests(unittest.TestCase):
         self.assertNotIn("zscale", command)
 
     def test_hdr_out_with_h264_raises(self):
-        with mock.patch("lightbox.convert._pick_encoder", return_value="libx264"):
+        with mock.patch("tstudio.convert._pick_encoder", return_value="libx264"):
             with self.assertRaises(ClipError):
                 plan_convert(
                     _hdr_info(Path("in.mp4")), Path("out.mp4"),
@@ -228,7 +228,7 @@ class PlanShapeTests(unittest.TestCase):
         self.assertEqual(plan.end, 5.0)
 
     def test_no_range_leaves_the_command_unchanged(self):
-        with mock.patch("lightbox.convert._pick_encoder", return_value="hevc_nvenc"):
+        with mock.patch("tstudio.convert._pick_encoder", return_value="hevc_nvenc"):
             plan = plan_convert(self._long_info(), Path("out.mp4"), hdr="sdr")
         self.assertNotIn("-ss", plan.command)
         self.assertNotIn("-t", plan.command)
@@ -322,7 +322,7 @@ class RealConversionTests(unittest.TestCase):
                                  fps=30.0, pix_fmt="yuv420p", bit_rate=None),
                 audio=(), stream_count=1,
             )
-            with mock.patch("lightbox.convert._pick_encoder", return_value="libx264"):
+            with mock.patch("tstudio.convert._pick_encoder", return_value="libx264"):
                 plan = plan_convert(info, dst, target="240p",
                                     encoder="libx264", quality=35)
             with self.assertRaises(ClipError) as ctx:
