@@ -18,3 +18,7 @@ tests/_fixtures/
 .venv/
 venv/
 env/
+
+# Debug scratch from automated runs
+artifacts/
+*_debug.txt
