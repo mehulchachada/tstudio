@@ -208,6 +208,30 @@ class TestGalleryApp(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_enter_on_a_video_opens_the_editor(self) -> None:
+        """Enter on a video must hand off to the editor, not sit there."""
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                (tmp / "clip.mp4").write_bytes(bytes(2048))
+                async with _app(tmp, fav).run_test() as pilot:
+                    await pilot.pause()
+                    app = pilot.app
+                    table = app.query_one("#files")
+                    names = _table_names(pilot)
+                    row = next(i for i, n in enumerate(names) if "clip.mp4" in n)
+                    table.move_cursor(row=row, column=0)
+                    await pilot.pause()
+                    with mock.patch("tstudio.tui.run_editor", return_value=0) as editor,                          mock.patch.object(app, "suspend"):
+                        await pilot.press("enter")
+                        await pilot.pause()
+                    self.assertTrue(editor.called)
+                    self.assertEqual(editor.call_args[0][0].suffix, ".mp4")
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_hidden_toggle(self) -> None:
         tmp, fav = self._setup()
         try:

@@ -524,7 +524,32 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
                 if entry is not None and entry.kind == "folder":
                     self.query_text = ""
                     self.folder = entry.path
+                elif entry is not None and entry.kind == "video":
+                    self._open_editor(entry.path)
                 event.stop()
+
+        def _open_editor(self, path: Path) -> None:
+            """Hand the terminal to the editor, then take it back.
+
+            The editor is its own Textual App, and an App cannot run inside
+            another one. suspend() releases the terminal so it can, which is
+            what yazi does for an external editor. On the way back the folder
+            is reloaded, because the editor has very likely written a new file
+            into it.
+            """
+            try:
+                from tstudio.tui import run_editor
+            except Exception as exc:  # noqa: BLE001 - textual missing, etc.
+                self.notify(str(exc), title="cannot open the editor", severity="error")
+                return
+            self.favourites.add_recent(path)
+            try:
+                with self.suspend():
+                    run_editor(path)
+            except Exception as exc:  # noqa: BLE001 - never take the gallery down
+                self.notify(str(exc), title="editor failed", severity="error")
+            self._reload()
+            self.refresh(layout=True)
 
         def on_input_changed(self, event) -> None:
             """Live filtering while the filter input has focus."""
