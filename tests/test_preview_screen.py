@@ -156,12 +156,14 @@ class PreviewScreenTestCase(unittest.TestCase):
                 break
 
     def _expected_size(self, pilot) -> tuple[int, int]:
-        """The cols/rows the dialog should have asked `art_for` for."""
-        from tstudio.gallery import preview_screen as ps
+        """The cols/rows the dialog should have asked `art_for` for.
 
+        The numbers are written out rather than read back off the module, so
+        this says what the sizing rule *is*: the dialog's own content box,
+        less the three rows the caption and hints take, never below 20x8.
+        """
         dialog = pilot.app.screen.query_one("#dialog")
-        return (max(ps.MIN_FRAME_COLS, dialog.size.width),
-                max(ps.MIN_FRAME_ROWS, dialog.size.height - ps.RESERVED_ROWS))
+        return (max(20, dialog.size.width), max(8, dialog.size.height - 3))
 
     def _caption(self, pilot) -> str:
         from textual.widgets import Static
@@ -189,6 +191,13 @@ class TestPreviewMount(PreviewScreenTestCase):
                 path, cols, rows, at = self.art.calls[-1]
                 self.assertEqual(path, CLIP)
                 self.assertEqual((cols, rows), self._expected_size(pilot))
+                # The frame it asked for is the frame it has room for: the
+                # caption and hints really do get their three rows back.
+                frame = screen.query_one("#frame")
+                dialog = screen.query_one("#dialog")
+                self.assertEqual(frame.region.height, rows)
+                self.assertEqual(frame.region.width, cols)
+                self.assertEqual(dialog.size.height - frame.region.height, 3)
                 self.assertEqual(at, screen.timestamps[0])
                 self.assertEqual(at, 0.0)
                 # The frame rendered, so the loading line is gone.
@@ -202,11 +211,9 @@ class TestPreviewMount(PreviewScreenTestCase):
         async def scenario():
             async with self._host().run_test(size=(24, 10)) as pilot:
                 await self._settle(pilot)
-                from tstudio.gallery import preview_screen as ps
-
                 _path, cols, rows, _at = self.art.calls[-1]
-                self.assertGreaterEqual(cols, ps.MIN_FRAME_COLS)
-                self.assertGreaterEqual(rows, ps.MIN_FRAME_ROWS)
+                self.assertGreaterEqual(cols, 20)
+                self.assertGreaterEqual(rows, 8)
 
         self._run(scenario())
 

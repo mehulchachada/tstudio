@@ -18,8 +18,8 @@ from tstudio.gallery import playback
 
 class MpvAvailableTests(unittest.TestCase):
     def setUp(self):
-        playback.mpv_available.cache_clear()
-        self.addCleanup(playback.mpv_available.cache_clear)
+        playback.mpv_path.cache_clear()
+        self.addCleanup(playback.mpv_path.cache_clear)
 
     def test_found_on_path(self):
         with mock.patch("tstudio.gallery.playback.shutil.which",
@@ -27,8 +27,15 @@ class MpvAvailableTests(unittest.TestCase):
             self.assertIs(playback.mpv_available(), True)
 
     def test_not_found_on_path(self):
-        with mock.patch("tstudio.gallery.playback.shutil.which", return_value=None):
+        """Nothing on PATH and nothing at the known install locations."""
+        with mock.patch("tstudio.gallery.playback.shutil.which", return_value=None),              mock.patch.object(playback, "_MPV_FALLBACK_PATHS", ()):
             self.assertIs(playback.mpv_available(), False)
+
+    def test_found_where_the_installer_left_it(self):
+        """winget's mpv adds no PATH entry; it must still be found."""
+        with mock.patch("tstudio.gallery.playback.shutil.which", return_value=None),              mock.patch.object(playback, "_MPV_FALLBACK_PATHS", (__file__,)):
+            self.assertIs(playback.mpv_available(), True)
+            self.assertEqual(playback.mpv_path(), __file__)
 
     def test_result_is_cached(self):
         with mock.patch("tstudio.gallery.playback.shutil.which",
@@ -39,8 +46,17 @@ class MpvAvailableTests(unittest.TestCase):
         self.assertEqual(which.call_count, 1)
 
 
+def _pin_mpv(testcase, where="mpv"):
+    """Pin where mpv is, so argv assertions do not depend on this machine."""
+    patcher = mock.patch.object(playback, "mpv_path", return_value=where)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+
+
 class MpvCommandTests(unittest.TestCase):
+
     def setUp(self):
+        _pin_mpv(self)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.clip = Path(self._tmp.name) / "clip.mp4"
@@ -60,7 +76,9 @@ class MpvCommandTests(unittest.TestCase):
 
 
 class PlayWithMpvTests(unittest.TestCase):
+
     def setUp(self):
+        _pin_mpv(self)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.clip = Path(self._tmp.name) / "clip.mp4"
@@ -223,6 +241,9 @@ if __name__ == "__main__":
 
 class OpenInPlayerTests(unittest.TestCase):
     """Watching the finished clip: mpv in its own window, else the OS player."""
+
+    def setUp(self) -> None:
+        _pin_mpv(self)
 
     def _file(self, tmp: str) -> Path:
         f = Path(tmp) / "clip.mp4"

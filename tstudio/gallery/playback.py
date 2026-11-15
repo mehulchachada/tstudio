@@ -24,13 +24,37 @@ from tstudio.media import probe
 MPV_HINT: str = "install mpv for in-terminal playback: winget install shinchiro.mpv"
 
 
-@lru_cache(maxsize=1)
-def mpv_available() -> bool:
-    """True when mpv is on PATH, cached for the life of the process.
+# Installers that add no PATH entry of their own. Checked after PATH itself:
+# winget's shinchiro.mpv lands in "C:\Program Files\MPV Player" and adds
+# nothing to PATH, so shutil.which() alone misses a perfectly good mpv.
+_MPV_FALLBACK_PATHS = (
+    r"C:\Program Files\MPV Player\mpv.exe",
+    r"C:\Program Files\mpv\mpv.exe",
+    r"C:\Program Files (x86)\MPV Player\mpv.exe",
+    "/opt/homebrew/bin/mpv",
+    "/usr/local/bin/mpv",
+    "/usr/bin/mpv",
+)
 
-    Call ``mpv_available.cache_clear()`` if mpv may have been installed since.
+
+@lru_cache(maxsize=1)
+def mpv_path() -> str | None:
+    """Where mpv is, or None. PATH first, then the known install locations."""
+    found = shutil.which("mpv")
+    if found:
+        return found
+    for candidate in _MPV_FALLBACK_PATHS:
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def mpv_available() -> bool:
+    """True when mpv can be found, on PATH or where installers leave it.
+
+    Call ``mpv_path.cache_clear()`` if mpv may have been installed since.
     """
-    return shutil.which("mpv") is not None
+    return mpv_path() is not None
 
 
 def _require_file(path: Path) -> None:
@@ -50,7 +74,7 @@ def mpv_command(path: Path) -> list[str]:
     that draws into the terminal itself. Raises ClipError if the file is missing.
     """
     _require_file(path)
-    return ["mpv", "--vo=tct", "--really-quiet", str(path)]
+    return [mpv_path() or "mpv", "--vo=tct", "--really-quiet", str(path)]
 
 
 def play_with_mpv(path: Path) -> int:
@@ -131,8 +155,8 @@ def player_command(path: Path, *, in_terminal: bool = False) -> list[str]:
     """
     _require_file(path)
     if in_terminal:
-        return ["mpv", "--vo=tct", "--really-quiet", str(path)]
-    return ["mpv", "--really-quiet", str(path)]
+        return [mpv_path() or "mpv", "--vo=tct", "--really-quiet", str(path)]
+    return [mpv_path() or "mpv", "--really-quiet", str(path)]
 
 
 def open_in_player(path: Path) -> str:

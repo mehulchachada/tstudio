@@ -223,6 +223,8 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
         BINDINGS = [
             Binding("ctrl+q", "quit", "Quit", priority=True),
             Binding("f5", "reload", "Reload", priority=True),
+
+            Binding("p", "play", "Play", priority=True),
             Binding("j", "down", "Down", show=False),
             Binding("k", "up", "Up", show=False),
             Binding("g", "first", "First", show=False),
@@ -505,6 +507,25 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             table = self.query_one("#files", DataTable)
             if table.row_count:
                 table.move_cursor(row=table.row_count - 1, column=0)
+
+        def action_play(self) -> None:
+            """Open the selected clip in mpv, or whatever the OS plays video with.
+
+            Browsing is for finding the clip you mean; being able to actually
+            watch it without leaving is most of the point.
+            """
+            entry = self._selected_entry()
+            if entry is None or entry.kind not in ("video", "image"):
+                self.notify("select a video first", severity="warning")
+                return
+            try:
+                from tstudio.gallery.playback import open_in_player
+                used = open_in_player(entry.path)
+            except Exception as exc:  # noqa: BLE001 - never take the gallery down
+                self.notify(str(exc), title="could not play", severity="error")
+                return
+            self.favourites.add_recent(entry.path)
+            self.notify(f"{entry.name} in {used}", title="playing")
 
         def action_toggle_favourite(self) -> None:
             entry = self._selected_entry()
