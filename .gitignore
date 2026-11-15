@@ -1,0 +1,10 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Generated test videos - tests/fixture.py rebuilds them on demand
+tests/_fixtures/
+
+# Local scratch output
+*.tmp
+*.building.*
