@@ -151,7 +151,8 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             background: $boost;
         }}
         #quality {{
-            width: 14;
+            width: 12;
+            margin-right: 2;
         }}
         #start_input,
         #end_input {{
@@ -292,7 +293,7 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
                                  value="pad", id="fit")
                 with Horizontal(classes="ctl_row"):
                     yield Label("Quality", classes="ctl_label")
-                    yield Input(placeholder="crf/cq (blank = default)", id="quality")
+                    yield Input(placeholder="crf/cq", id="quality")
                     yield Checkbox("mute", id="mute")
             with Vertical(id="readout_panel"):
                 yield Static("", id="readout")

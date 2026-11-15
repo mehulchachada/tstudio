@@ -27,10 +27,11 @@ tstudio raid.mp4 --tui                     # the interactive editor
 
 ## Pictures, in a terminal
 
-<img src="docs/terminal-art.png" alt="a 4K HDR frame rendered as coloured text" width="760">
+<img src="docs/terminal-art.jpg" alt="a 4K HDR frame rendered as coloured text" width="900">
 
-That is a frame of a 4K HDR video, drawn inside a terminal. Every character cell is one
-`▀` glyph carrying two 24-bit colours — the top pixel as foreground, the bottom as background.
+That is a frame of a 4K HDR video, drawn inside a terminal at 150×46 characters. Every cell is a
+single `▀` glyph carrying two 24-bit colours — the top pixel as foreground, the bottom as
+background — so one row of text holds two rows of pixels.
 
 No sixel, no kitty protocol, no image libraries: ImageMagick decodes to a PPM, a few lines of
 Python parse it, and the result is ordinary styled text that any truecolor terminal renders.
