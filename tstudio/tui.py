@@ -110,6 +110,7 @@ def _run(argv: list[str] | None = None) -> int:
 def _build_app(info: MediaInfo, start_text: str, end_text: str,
                out_path: Path | None):
     """Build the ClipApp. Imports textual here so the CLI never needs it."""
+    from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
@@ -161,33 +162,33 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
         #mute {{
             width: 16;
         }}
+        /* No boxes. Groups are separated by space, and the only rule on the
+           screen is a single accent bar beside the readout - the one thing
+           you must not miss. */
         #file_panel {{
             height: auto;
-            border: round {branding.AMBER};
-            padding: 0 1;
-            margin-bottom: 0;
+            padding: 0 2;
+            margin-bottom: 1;
         }}
         #range_panel {{
             height: auto;
-            border: round {branding.AMBER};
-            padding: 0 1;
-            margin-bottom: 0;
+            padding: 0 2;
+            margin-bottom: 1;
         }}
         #output_panel {{
             height: auto;
-            border: round {branding.AMBER};
-            padding: 0 1;
-            margin-bottom: 0;
+            padding: 0 2;
+            margin-bottom: 1;
         }}
         #readout_panel {{
             height: auto;
             max-height: 5;
-            border: round $success;
-            padding: 0 1;
-            margin-bottom: 0;
+            border-left: thick $success;
+            padding: 0 2;
+            margin-bottom: 1;
         }}
         #readout_panel.error {{
-            border: round $error;
+            border-left: thick $error;
         }}
         #readout {{
             height: auto;
@@ -552,7 +553,6 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
 
         def _cut(self) -> None:
             """Run the cut in a background thread; the UI stays responsive."""
-            import threading
 
             task = self._current_task()
             lossless = self.query_one("#mode", Select).value == "lossless"
@@ -597,19 +597,25 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             self.query_one("#bar", ProgressBar).progress = 0.0
             self.query_one("#status", Static).update("cutting...")
 
-            def worker() -> None:
-                try:
-                    if task == "cut":
-                        run_cut(plan, on_progress=on_progress)
-                    else:
-                        run_convert(plan, on_progress=on_progress)
-                    self.call_from_thread(self._ui_done, str(dst), _fmt_size(dst.stat().st_size))
-                except ClipError as exc:
-                    self.call_from_thread(self._ui_fail, str(exc))
-                except Exception as exc:  # noqa: BLE001
-                    self.call_from_thread(self._ui_fail, str(exc))
+            self._run_job(task, plan, dst, on_progress)
 
-            threading.Thread(target=worker, daemon=True).start()
+        @work(thread=True, exclusive=True, group="encode")
+        def _run_job(self, task: str, plan, dst, on_progress) -> None:
+            """Run the ffmpeg job off the event loop.
+
+            exclusive=True means a second press supersedes the first rather
+            than starting two encodes over the same destination.
+            """
+            try:
+                if task == "cut":
+                    run_cut(plan, on_progress=on_progress)
+                else:
+                    run_convert(plan, on_progress=on_progress)
+                self.call_from_thread(self._ui_done, str(dst), _fmt_size(dst.stat().st_size))
+            except ClipError as exc:
+                self.call_from_thread(self._ui_fail, str(exc))
+            except Exception as exc:  # noqa: BLE001
+                self.call_from_thread(self._ui_fail, str(exc))
 
         # -- UI updates (called on the main thread via call_from_thread) ------
         def _ui_progress(self, pct: float, text: str) -> None:
@@ -618,11 +624,14 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
 
         def _ui_done(self, dst: str, size: str) -> None:
             self.query_one("#bar", ProgressBar).progress = 1.0
-            self.query_one("#status", Static).update(f"done -> {dst}  ({size})")
+            name = Path(dst).name
+            self.query_one("#status", Static).update(f"done -> {name}  ({size})")
+            self.notify(f"{name} ({size})", title="written", severity="information")
             self._set_controls_enabled(True)
 
         def _ui_fail(self, message: str) -> None:
             self.query_one("#status", Static).update(f"error: {message}")
+            self.notify(message, title="failed", severity="error")
             self._set_controls_enabled(True)
 
     return ClipApp(info, start_text, end_text, out_path)

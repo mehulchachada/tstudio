@@ -20,12 +20,15 @@ try:  # Textual is optional for the CLI; skip (rather than fail) if it is absent
 except ImportError:
     _HAS_TEXTUAL = False
 
+from tstudio import ClipError
+from tstudio.gallery.entries import list_folder
 from tstudio.gallery.favourites import Favourites
+from tstudio.media import MediaInfo, VideoStream
 
 
 def _bare(names: list[str]) -> list[str]:
     """Row names with the leading icon removed."""
-    return [n.split(" ", 1)[1] if " " in n else n for n in names]
+    return [n.split(" ", 1)[1].strip() if " " in n else n for n in names]
 
 
 def _text(pilot, selector: str) -> str:
@@ -49,6 +52,44 @@ def _tree(root: Path) -> None:
 def _app(folder: Path, fav: Favourites):
     from tstudio.gallery_app import build_gallery
     return build_gallery(folder, fav)
+
+
+async def _settle(pilot) -> None:
+    """Let the event loop and any thread workers (the preview) finish."""
+    await pilot.pause()
+    await pilot.app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+def _fake_info(path: Path, *, hdr: bool) -> MediaInfo:
+    """A probe() result with no ffprobe behind it."""
+    video = VideoStream(
+        index=0,
+        codec="hevc",
+        width=1920,
+        height=1080,
+        fps=30.0,
+        pix_fmt="yuv420p10le",
+        bit_rate=12_000_000,
+        color_primaries="bt2020" if hdr else "bt709",
+        color_transfer="smpte2084" if hdr else "bt709",
+        color_space="bt2020nc" if hdr else "bt709",
+        color_range="tv",
+    )
+    return MediaInfo(
+        path=path,
+        duration=229.0,
+        size=3_900_000,
+        bit_rate=12_000_000,
+        video=video,
+        audio=(),
+        stream_count=2,
+    )
+
+
+def _fake_art(path: Path, cols: int, rows: int, *, at: float | None = None) -> list[str]:
+    """Coloured blocks, one ANSI string per row, exactly as art_for returns them."""
+    return ["\x1b[38;2;255;170;0m" + "█" * max(1, cols) + "\x1b[0m" for _ in range(max(1, rows))]
 
 
 def _table_names(pilot) -> list[str]:
@@ -246,6 +287,213 @@ class TestGalleryApp(unittest.TestCase):
             self._run(scenario())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_a_favourite_raises_a_toast(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                app = _app(tmp, fav)
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    pilot.app.query_one("#files").move_cursor(row=3)  # shot.png
+                    await pilot.pause()
+                    with mock.patch.object(app, "notify") as notify:
+                        await pilot.press("f")
+                        await pilot.pause()
+                        self.assertIn("shot.png", notify.call_args.args[0])
+                        self.assertIn("added", notify.call_args.args[0])
+                        await pilot.press("f")
+                        await pilot.pause()
+                        self.assertIn("removed", notify.call_args.args[0])
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_an_unreadable_folder_raises_a_toast(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                app = _app(tmp, fav)
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    shutil.rmtree(tmp)
+                    with mock.patch.object(app, "notify") as notify:
+                        await pilot.press("f5")
+                        await pilot.pause()
+                        self.assertTrue(notify.called)
+                        self.assertEqual(notify.call_args.kwargs["severity"], "error")
+                    self.assertIn("not a folder", _text(pilot, "#status"))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # -- reactive state --------------------------------------------------
+
+    def test_assigning_folder_reloads_the_listing(self) -> None:
+        """No loader is called by hand: setting the reactive is the whole API."""
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                async with _app(tmp, fav).run_test() as pilot:
+                    await pilot.pause()
+                    pilot.app.folder = tmp / "originals"
+                    await pilot.pause()
+                    names = _table_names(pilot)
+                    self.assertEqual(names[0], "📁 ..")
+                    self.assertIn("raid.mp4", names[1])
+                    self.assertIn("originals", _text(pilot, "#status"))
+                    pilot.app.folder = tmp
+                    await pilot.pause()
+                    self.assertIn("shot.png", _bare(_table_names(pilot)))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_assigning_show_hidden_reloads_the_listing(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                async with _app(tmp, fav).run_test() as pilot:
+                    await pilot.pause()
+                    self.assertNotIn(".hidden", _bare(_table_names(pilot)))
+                    pilot.app.show_hidden = True
+                    await pilot.pause()
+                    self.assertIn(".hidden", _bare(_table_names(pilot)))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_query_text_refilters_without_touching_the_disk(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                with mock.patch("tstudio.gallery_app.list_folder", wraps=list_folder) as lister:
+                    async with _app(tmp, fav).run_test() as pilot:
+                        await pilot.pause()
+                        self.assertTrue(lister.called)  # the initial listing
+                        lister.reset_mock()
+                        pilot.app.query_text = "shot"
+                        await pilot.pause()
+                        names = _table_names(pilot)
+                        self.assertIn("shot.png", names[1])
+                        self.assertNotIn("notes.txt", _bare(names))
+                        lister.assert_not_called()
+                        pilot.app.query_text = ""
+                        await pilot.pause()
+                        self.assertIn("notes.txt", _bare(_table_names(pilot)))
+                        lister.assert_not_called()
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # -- preview ---------------------------------------------------------
+
+    def test_preview_shows_the_picture_and_metadata(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                with mock.patch("tstudio.gallery_app.art_for", side_effect=_fake_art) as art, \
+                     mock.patch("tstudio.gallery_app.probe",
+                                side_effect=lambda p: _fake_info(p, hdr=True)) as probe:
+                    async with _app(tmp, fav).run_test() as pilot:
+                        await pilot.pause()
+                        pilot.app.folder = tmp / "originals"
+                        await pilot.pause()
+                        table = pilot.app.query_one("#files")
+                        table.move_cursor(row=1)  # raid.mp4
+                        # The worker is a thread: the pane only fills in later.
+                        await _settle(pilot)
+                        meta = _text(pilot, "#preview-meta")
+                        self.assertIn("3:49.000", meta)
+                        self.assertIn("1920x1080", meta)
+                        self.assertIn("@30fps", meta)
+                        self.assertIn("hevc", meta)
+                        self.assertIn("HDR10", meta)
+                        self.assertIn("3.7 MB", meta)
+                        picture = _text(pilot, "#preview-art")
+                        self.assertIn("█", picture)
+                        self.assertNotIn("loading", picture)
+                        self.assertIn("raid.mp4", pilot.app.query_one("#preview").border_title)
+                        self.assertTrue(probe.called)
+                        self.assertTrue(art.called)
+                        # Sized to the pane, with the metadata rows left free.
+                        _path, cols, rows = art.call_args.args
+                        pane = pilot.app.query_one("#preview")
+                        self.assertGreaterEqual(cols, 8)
+                        self.assertGreaterEqual(rows, 4)
+                        self.assertLessEqual(rows, max(4, pane.size.height - 2))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_preview_of_an_image_does_not_probe(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                def boom(*a, **k):
+                    raise AssertionError("an image must not be probed")
+                with mock.patch("tstudio.gallery_app.art_for", side_effect=_fake_art), \
+                     mock.patch("tstudio.gallery_app.probe", side_effect=boom):
+                    async with _app(tmp, fav).run_test() as pilot:
+                        await pilot.pause()
+                        table = pilot.app.query_one("#files")
+                        table.move_cursor(row=3)  # shot.png
+                        await _settle(pilot)
+                        self.assertIn("█", _text(pilot, "#preview-art"))
+                        self.assertIn("2.0 KB", _text(pilot, "#preview-meta"))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_preview_shows_a_clip_error_instead_of_crashing(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                with mock.patch("tstudio.gallery_app.art_for", side_effect=_fake_art), \
+                     mock.patch("tstudio.gallery_app.probe",
+                                side_effect=ClipError("no video stream")):
+                    async with _app(tmp, fav).run_test() as pilot:
+                        await pilot.pause()
+                        pilot.app.folder = tmp / "originals"
+                        await pilot.pause()
+                        pilot.app.query_one("#files").move_cursor(row=1)
+                        await _settle(pilot)
+                        self.assertTrue(pilot.app.is_running)
+                        self.assertIn("no video stream", _text(pilot, "#preview-art"))
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_preview_is_empty_for_a_folder(self) -> None:
+        tmp, fav = self._setup()
+        try:
+            async def scenario():
+                async with _app(tmp, fav).run_test() as pilot:
+                    await pilot.pause()
+                    pilot.app.query_one("#files").move_cursor(row=1)  # originals
+                    await _settle(pilot)
+                    self.assertIn("select a file", _text(pilot, "#preview-art"))
+                    self.assertEqual(_text(pilot, "#preview-meta").strip(), "")
+                    self.assertEqual(pilot.app.query_one("#preview").border_title, "preview")
+
+            self._run(scenario())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_no_raw_threads_in_the_module(self) -> None:
+        """Previews run on Textual's worker API, not on hand-rolled threads."""
+        import tstudio.gallery_app as module
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("threading", source)
+        self.assertIn('@work(thread=True, exclusive=True, group="preview")', source)
 
     def test_everything_fits_in_a_100x34_terminal(self) -> None:
         tmp, fav = self._setup()

@@ -309,7 +309,9 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Cut a piece out of a video. Default is a lossless stream copy: "
         "bit-for-bit the same quality as the source, done in under a second.",
     )
-    p.add_argument("input", metavar="INPUT", help="the video file to cut")
+    p.add_argument("input", metavar="INPUT", nargs="?",
+                   help="the video file to cut, or a folder to browse. "
+                        "With no INPUT, the gallery opens in the current folder")
     p.add_argument("ranges", metavar="RANGE", nargs="*",
                    help="time range(s): '3:49', '3:49-4:30', '3:49-end', '2m30s-3m'; "
                         "each range makes one output file. Relative forms also work: "
@@ -372,6 +374,21 @@ def main(argv: list[str] | None = None) -> int:
 def _run(argv: list[str] | None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # No INPUT, or a folder as INPUT, means browse: that is the gallery.
+    # Every other flag is about acting on one file, so none may come with it.
+    target = Path(args.input) if args.input else Path.cwd()
+    if not args.input or target.is_dir():
+        for flag, name in ((args.ranges, "RANGE"), (args.info, "--info"),
+                           (args.keyframes is not None, "--keyframes"),
+                           (args.to is not None, "--to"),
+                           (args.for_preset is not None, "--for"),
+                           (args.dry_run, "--dry-run"), (args.exact, "--exact")):
+            if flag:
+                what = "a folder" if args.input else "no INPUT"
+                raise ClipError(f"{name} needs a video file, but {what} was given")
+        from tstudio.gallery_app import run_gallery
+        return run_gallery(target)
 
     converting = args.to is not None or args.for_preset is not None
 
