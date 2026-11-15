@@ -233,7 +233,8 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
 
         BINDINGS = [
             Binding("f5", "cut", "Cut", priority=True),
-            Binding("f2", "toggle_preview", "Preview", priority=True),
+            Binding("f2", "preview_clip", "Preview", priority=True),
+            Binding("f7", "toggle_preview", "Show cmd", priority=True),
             Binding("f3", "reset_inputs", "Reset", priority=True),
             Binding("f4", "copy_command", "Copy cmd", priority=True),
             Binding("f6", "play_output", "Play result", priority=True),
@@ -365,7 +366,27 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             self._cut()
 
         def action_toggle_preview(self) -> None:
+            """F7: show or hide the raw ffmpeg command."""
             self._toggle_preview()
+
+        def action_preview_clip(self) -> None:
+            """F2: look at the clip, stepping through frames between in and out.
+
+            "Preview" used to reveal an ffmpeg command, which is not a preview
+            of anything you can watch.
+            """
+            try:
+                start, end = self._current()
+            except ClipError as exc:
+                self.notify(str(exc), title="bad range", severity="error")
+                return
+            try:
+                from tstudio.gallery.preview_screen import build_preview_screen
+                screen = build_preview_screen(self.info.path, start=start, end=end)
+            except Exception as exc:  # noqa: BLE001 - never take the editor down
+                self.notify(str(exc), title="cannot preview", severity="error")
+                return
+            self.push_screen(screen)
 
         def action_play_output(self) -> None:
             """Watch the clip that was just written."""

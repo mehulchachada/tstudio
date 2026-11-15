@@ -112,14 +112,15 @@ class TestTui(unittest.TestCase):
 
         self._run(scenario())
 
-    def test_preview_starts_hidden_and_toggles(self) -> None:
+    def test_command_panel_starts_hidden_and_toggles(self) -> None:
+        """F7 shows the raw ffmpeg command; F2 now opens the clip preview."""
         async def scenario():
             async with _app("2", "4").run_test() as pilot:
                 await pilot.pause()
                 panel = pilot.app.query_one("#preview_panel")
                 self.assertFalse(panel.display)
                 pilot.app.query_one("#btn_cut").focus()
-                await pilot.press("f2")
+                await pilot.press("f7")
                 await pilot.pause()
                 self.assertTrue(panel.display)
 
