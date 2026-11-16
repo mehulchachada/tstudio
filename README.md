@@ -178,9 +178,9 @@ tstudio raid.mp4 --for x
 | `x` | 1920×1080 | 140 s |
 | `square` | 1080×1080 | 60 s |
 
-Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. From the command line every
-preset outputs SDR H.264 + AAC with `+faststart`, capped at 60 fps. Going over a platform's limit
-prints a warning, not an error.
+Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. By default every preset outputs
+SDR H.264 + AAC with `+faststart`, capped at 60 fps. Going over a platform's limit prints a
+warning, not an error.
 
 A preset can keep HDR10 instead:
 
