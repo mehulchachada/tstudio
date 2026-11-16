@@ -371,7 +371,8 @@ class TestConversionFlags(unittest.TestCase):
         self.assertIn("--for", err)
         self.assertNotIn("Traceback", err)
 
-    def test_hdr_without_to_refused(self) -> None:
+    def test_hdr_without_a_conversion_refused(self) -> None:
+        """A lossless copy has no colour decision to make."""
         self._stub()
         dense = ensure_sample("dense")
         code, out, err = _run_main([str(dense), "--hdr", "sdr"])
@@ -379,6 +380,42 @@ class TestConversionFlags(unittest.TestCase):
         self.assertTrue(err.startswith("tstudio: "), err)
         self.assertIn("--hdr", err)
         self.assertIn("--to", err)
+        self.assertIn("--for", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_a_preset_tone_maps_unless_asked_not_to(self) -> None:
+        """The default for --for is NOT the default for --to, on purpose.
+
+        --to auto keeps whatever the source has; --for auto tone-maps,
+        because a social export goes to a platform that expects SDR. This
+        pins that asymmetry so it cannot be "tidied up" into a surprise.
+        """
+        self._stub()
+        hdr = ensure_sample("hdr")
+        code, out, err = _run_main([str(hdr), "--for", "shorts",
+                                    "-O", str(self.tmp)])
+        self.assertEqual(code, 0, err)
+        self.assertIn("tone-mapped", out)
+        self.assertNotIn("HDR10 kept", out)
+
+    def test_a_preset_can_keep_hdr_when_asked(self) -> None:
+        self._stub()
+        hdr = ensure_sample("hdr")
+        code, out, err = _run_main([str(hdr), "--for", "shorts", "--hdr", "keep",
+                                    "-O", str(self.tmp)])
+        self.assertEqual(code, 0, err)
+        self.assertIn("HDR10 kept", out)
+        self.assertNotIn("tone-mapped", out)
+        # it must not quietly pick h264, which cannot carry HDR at all
+        self.assertNotIn("h264", out)
+
+    def test_a_preset_cannot_invent_hdr(self) -> None:
+        self._stub()
+        dense = ensure_sample("dense")
+        code, out, err = _run_main([str(dense), "--for", "shorts", "--hdr", "keep",
+                                    "-O", str(self.tmp)])
+        self.assertEqual(code, 2)
+        self.assertIn("cannot be invented", err)
         self.assertNotIn("Traceback", err)
 
     def test_fps_without_to_refused(self) -> None:
@@ -550,6 +587,27 @@ class TestConversionFlags(unittest.TestCase):
         info = probe(files[0])
         self.assertEqual((info.video.width, info.video.height), (1080, 1920))
         self.assertNotEqual(info.video.color_transfer, "smpte2084")
+
+    def test_real_social_export_keeping_hdr_end_to_end(self) -> None:
+        """The whole point, against a real file rather than an argv list.
+
+        Asking for Shorts and keeping HDR10 used to drop the 9:16 reframe,
+        so this checks both halves of the answer at once: the frame really
+        is vertical AND the colour really is still PQ / bt2020 / 10-bit.
+        """
+        hdr = ensure_sample("hdr")
+        code, out, err = _run_main([str(hdr), "--for", "shorts", "--hdr", "keep",
+                                    "-O", str(self.tmp), "--encoder", "libx265",
+                                    "-q", "35"])
+        self.assertEqual(code, 0, err)
+        files = list(self.tmp.iterdir())
+        self.assertEqual(len(files), 1)
+        from tstudio.media import probe
+        info = probe(files[0])
+        self.assertEqual((info.video.width, info.video.height), (1080, 1920))
+        self.assertEqual(info.video.color_transfer, "smpte2084")
+        self.assertEqual(info.video.color_primaries, "bt2020")
+        self.assertIn("10", info.video.pix_fmt)
 
 
 if __name__ == "__main__":

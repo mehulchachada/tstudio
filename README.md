@@ -182,10 +182,20 @@ Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. From the command
 preset outputs SDR H.264 + AAC with `+faststart`, capped at 60 fps. Going over a platform's limit
 prints a warning, not an error.
 
-In the **editor** a preset can keep HDR10: set COLOUR back to `keep HDR10` after picking one and
-the 9:16 reframing is unchanged, while the tone-map and the 8-bit flatten are skipped and an
-HEVC or AV1 encoder is chosen — h264 cannot carry HDR in either flavour. On the command line
-`--hdr` still applies to `--to` only; `--for ... --hdr keep` is not wired up yet.
+A preset can keep HDR10 instead:
+
+```bash
+tstudio raid.mp4 3:49-4:19 --for shorts --hdr keep
+```
+
+The 9:16 reframing is unchanged — only the tone-map and the 8-bit flatten are skipped — and an
+HEVC or AV1 encoder is picked automatically, because h264 cannot carry HDR in either flavour.
+In the editor the same thing is COLOUR set back to `keep HDR10` after choosing a preset.
+
+Note the deliberate asymmetry: `--hdr auto` **keeps** HDR under `--to` and **tone-maps** under
+`--for`. Converting a capture you are keeping should not throw colour away, but a social export
+goes to a platform that expects SDR, so there HDR is something you ask for. `--hdr keep` on an
+SDR source is an error either way — HDR cannot be invented.
 
 Both `--to` and `--for` accept a range and run in **one ffmpeg pass** — no multi-gigabyte
 intermediate file.
@@ -241,7 +251,7 @@ command line never depends on it.
 python -m unittest discover -s tests -t tests
 ```
 
-564 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
+568 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
 including a genuine **HDR10** fixture — and the suite performs actual cuts and conversions against
 them, then probes the results. The gallery and the editor are driven through Textual's own test
 pilot, and the editor has a layout test that fails if any widget leaves a 100×34 terminal.

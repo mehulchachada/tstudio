@@ -155,6 +155,12 @@ def _run_conversion(args: argparse.Namespace, info: MediaInfo) -> int:
         tag = preset.name
         target_text = preset.label
         audio_bitrate = preset.audio_bitrate
+        # Deliberately not the same default as --to. There, "auto" keeps
+        # whatever the source has, because converting a capture you are
+        # keeping should not throw colour away. A social preset is an export
+        # to a platform, and the platforms expect SDR - so "auto" tone-maps,
+        # and keeping HDR is something you ask for.
+        hdr_out = args.hdr == "keep"
     else:
         preset = None
         fit = None
@@ -181,7 +187,7 @@ def _run_conversion(args: argparse.Namespace, info: MediaInfo) -> int:
         try:
             if preset is not None:
                 kwargs: dict = {"fit": fit, "quality": args.quality, "mute": args.mute,
-                               "start": start, "end": end}
+                               "start": start, "end": end, "hdr_out": hdr_out}
                 if args.encoder != "auto":
                     kwargs["encoder"] = args.encoder
                 plan = plan_social(info, dst, preset, **kwargs)
@@ -334,7 +340,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="pad keeps the whole frame on a blurred background; "
                         "crop fills the screen but loses the sides (--for only, pad is the default)")
     p.add_argument("--hdr", choices=("auto", "keep", "sdr"), default=None,
-                   help="auto keeps HDR if the source has it; sdr tone-maps it down (--to only, auto is the default)")
+                   help="keep preserves HDR10, sdr tone-maps it down. The default differs on "
+                        "purpose: with --to, auto keeps whatever the source has; with --for, "
+                        "auto tone-maps, because the platforms expect SDR")
     p.add_argument("--fps", type=float, default=None, metavar="N",
                    help="output frame rate (--to only)")
     p.add_argument("--encoder", choices=_ENCODERS, default="auto", metavar="NAME",
@@ -400,8 +408,8 @@ def _run(argv: list[str] | None) -> int:
 
     if args.fit is not None and args.for_preset is None:
         raise ClipError("--fit only applies with --for")
-    if args.hdr is not None and args.to is None:
-        raise ClipError("--hdr only applies with --to")
+    if args.hdr is not None and args.to is None and args.for_preset is None:
+        raise ClipError("--hdr only applies with --to or --for")
     if args.fps is not None and args.to is None:
         raise ClipError("--fps only applies with --to")
 
