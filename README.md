@@ -2,21 +2,23 @@
 
 <img src="docs/hero.png" alt="tstudio" width="620">
 
-**Terminal video studio: browse clips as colour art, cut losslessly, tone-map HDR, export for Shorts.**
+**A terminal video editor: browse your captures in a gallery, cut them losslessly,
+tone-map HDR, export for Shorts.**
 
 </div>
 
 ---
 
 `tstudio` cuts video **without re-encoding it**, so a clip is bit-for-bit the quality of the
-source — a 30-second cut from a 3.7 GB 4K capture takes under a second. It browses folders with
-real thumbnails drawn as coloured text, reads HDR10 correctly instead of washing it out to grey,
+source — a 30-second cut from a 3.7 GB 4K capture takes under a second. It browses folders in a
+gallery, opens any clip in a full editor, reads HDR10 correctly instead of washing it out to grey,
 and exports for YouTube Shorts, Instagram Reels, TikTok and X in a single command.
 
 It was built for NVIDIA ShadowPlay gameplay captures — 4K, 120 fps, HDR10, ~105 Mbps, several
 gigabytes for a few minutes — which is the case most tools handle badly.
 
 ```bash
+tstudio                                    # browse the current folder
 tstudio raid.mp4 3:49                      # cut from 3:49 to the end, losslessly
 tstudio raid.mp4 3:49-4:19 --for shorts    # a vertical Shorts clip, tone-mapped
 tstudio raid.mp4 --to 1080p                # 4K down to 1080p, HDR preserved
@@ -24,17 +26,6 @@ tstudio raid.mp4 --tui                     # the interactive editor
 ```
 
 ---
-
-## Pictures, in a terminal
-
-<img src="docs/terminal-art.jpg" alt="a 4K HDR frame rendered as coloured text" width="900">
-
-That is a frame of a 4K HDR video, drawn inside a terminal at 150×46 characters. Every cell is a
-single `▀` glyph carrying two 24-bit colours — the top pixel as foreground, the bottom as
-background — so one row of text holds two rows of pixels.
-
-No sixel, no kitty protocol, no image libraries: ImageMagick decodes to a PPM, a few lines of
-Python parse it, and the result is ordinary styled text that any truecolor terminal renders.
 
 ## HDR, done properly
 
@@ -63,17 +54,38 @@ The default never silently discards picture.
 
 <img src="docs/gallery.png" alt="the tstudio gallery browser" width="900">
 
-`tstudio` browses folders without touching ffmpeg, so a directory of 4 GB captures opens
-instantly — sizes and dates come from `stat`, and only the selected file is ever probed. Star a
-clip with `f` and it turns up under Favourites however deep it was buried.
+`tstudio` with no arguments browses the current folder, and it never touches ffmpeg to do it: a
+directory of 4 GB captures opens instantly, because sizes and dates come from `stat` and only the
+file under the cursor is ever probed.
+
+The preview tells you what a file **is** rather than trying to be it — the kind, then length,
+resolution, frame rate, codec, colour and size. It deliberately does not draw the frame. That
+needs sixel, which most terminals do not have, and pulling a frame out of a 3.7 GB 4K source
+takes seconds, so the pane sat blank while you scrolled past it. `p` hands the file to **mpv**
+instead, where it is a real picture at full resolution.
+
+`f` marks a favourite, which then turns up under Favourites however deep it was buried. `bksp`
+goes up a folder, `/` filters the listing, `Enter` on a video opens it in the editor.
 
 ## The editor
 
 <img src="docs/tui.png" alt="the tstudio editor" width="900">
 
-`tstudio VIDEO --tui` opens an interactive editor over the same engine: set a range, pick cut /
-convert / social, see exactly which keyframe the cut will land on and what file it will write,
-then run it. `F5` cuts, `F2` toggles the ffmpeg command, `F3` resets, `Ctrl+Q` quits.
+`tstudio VIDEO --tui` opens the editor over the same engine; `Enter` on a clip in the gallery
+does the same thing.
+
+Seven controls, in the order you think about them: **CLIP** (one range, `3:49-4:19`), **PRESET**,
+**SIZE**, **SHAPE**, **COLOUR**, **FPS** and **AUDIO**. Choosing a preset fills in the rest.
+Changing one afterwards is allowed — the editor notes which preset you have drifted from instead
+of quietly overriding you, and it only offers what the source can actually do, so an SDR file is
+never asked about HDR.
+
+Underneath, it says what will happen before anything runs: which keyframe the cut will snap to
+and by how much, what the output will be called, how long it will be, and whether the result is a
+lossless copy or a re-encode.
+
+`F5` exports · `F2` plays the clip · `F6` plays the result · `F7` shows the ffmpeg command ·
+`F4` copies it · `F3` resets · `Esc` goes back.
 
 ---
 
@@ -102,12 +114,15 @@ On Linux or macOS:
 PYTHONPATH="/path/to/tstudio:$PYTHONPATH" exec python3 -m tstudio "$@"
 ```
 
-The TUI additionally needs [Textual](https://github.com/Textualize/textual). It is optional — the
-command line works without it:
+The gallery and the editor additionally need [Textual](https://github.com/Textualize/textual).
+It is optional — the command line works without it:
 
 ```bash
 pip install textual
 ```
+
+Playing a clip (`p` in the gallery, `F2` and `F6` in the editor) hands it to
+[mpv](https://mpv.io) if mpv is on PATH. Everything else works without it.
 
 ## Usage
 
@@ -163,9 +178,14 @@ tstudio raid.mp4 --for x
 | `x` | 1920×1080 | 140 s |
 | `square` | 1080×1080 | 60 s |
 
-Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. Every preset outputs SDR H.264 +
-AAC with `+faststart`, capped at 60 fps. Going over a platform's limit prints a warning, not an
-error.
+Aliases: `youtube-shorts`, `yt-shorts`, `instagram`, `twitter`. From the command line every
+preset outputs SDR H.264 + AAC with `+faststart`, capped at 60 fps. Going over a platform's limit
+prints a warning, not an error.
+
+In the **editor** a preset can keep HDR10: set COLOUR back to `keep HDR10` after picking one and
+the 9:16 reframing is unchanged, while the tone-map and the 8-bit flatten are skipped and an
+HEVC or AV1 encoder is chosen — h264 cannot carry HDR in either flavour. On the command line
+`--hdr` still applies to `--to` only; `--for ... --hdr keep` is not wired up yet.
 
 Both `--to` and `--for` accept a range and run in **one ffmpeg pass** — no multi-gigabyte
 intermediate file.
@@ -201,12 +221,15 @@ Exit codes: `0` fine · `2` bad input (one line, no traceback) · `1` unexpected
 tstudio/
   cli.py          argument parsing, output, exit codes
   tui.py          the Textual editor (imports textual lazily)
+  recipe.py       what the editor's seven controls mean, and the plan they produce
+  theme.py        the one colour theme the gallery and the editor share
   timespec.py     time and range parsing, output naming   — pure, no ffmpeg
   media.py        ffprobe: streams, duration, keyframes, HDR detection
   cut.py          lossless and exact cutting
   convert.py      resolution and colour conversion, tone-mapping
   presets.py      the social platform table
-  gallery/        folder listing, favourites, thumbnails, clipboard, trash, branding
+  gallery_app.py  the browser
+  gallery/        listing, favourites, preview art, playback, clipboard, trash, branding
 ```
 
 The package needs only the standard library. Textual is imported inside the TUI's builder, so the
@@ -218,10 +241,10 @@ command line never depends on it.
 python -m unittest discover -s tests -t tests
 ```
 
-261 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
+564 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
 including a genuine **HDR10** fixture — and the suite performs actual cuts and conversions against
-them, then probes the results. The TUI has a layout test that fails if any widget leaves a
-100×34 terminal.
+them, then probes the results. The gallery and the editor are driven through Textual's own test
+pilot, and the editor has a layout test that fails if any widget leaves a 100×34 terminal.
 
 ## Licence
 
