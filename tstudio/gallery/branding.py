@@ -83,7 +83,7 @@ def splash_lines(width: int) -> list[str]:
     tagline, a blank line, then the hint line. Under 80 columns, just the
     compact line and the hint line. Plain strings, no ANSI escapes.
     """
-    hint = "o  open a folder      ★  favourites"
+    hint = "o  open a folder      ◆  favourites"
     if width < 80:
         return [_centre(COMPACT, width), _centre(hint, width)]
     lines = ["", *CAMERA, "", WORDMARK, TAGLINE, "", hint]

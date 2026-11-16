@@ -14,7 +14,7 @@ from tstudio import ClipError
 from tstudio.gallery import branding
 from tstudio.gallery.entries import Entry, filter_entries, folder_summary, list_folder
 from tstudio.gallery.favourites import Favourites
-from tstudio.gallery.thumbs import art_for
+from tstudio.gallery import icons
 from tstudio.media import MediaInfo, is_hdr, probe
 from tstudio.timespec import format_time
 
@@ -27,8 +27,6 @@ _ICONS = {
 
 #: Rows of the preview pane reserved for the metadata block under the picture.
 _META_ROWS = 2
-_MIN_ART_COLS = 8
-_MIN_ART_ROWS = 4
 
 _EMPTY_PREVIEW = "select a file"
 _LOADING_PREVIEW = "loading…"
@@ -94,7 +92,7 @@ def _truncate(text: str, width: int) -> str:
 def _name_cell(entry: Entry, fav: Favourites, width: int) -> str:
     """Icon, name and star, truncated to the column width."""
     icon = _icon_for(entry)
-    star = " ★" if fav.is_favourite(entry.path) else ""
+    star = " ◆" if fav.is_favourite(entry.path) else ""
     # Truncate only the name: _truncate keeps the tail, so folding the icon
     # into it would cut the icon off every row long enough to need trimming.
     # Widths are in cells, not characters - the icons are double-width.
@@ -147,15 +145,16 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.reactive import reactive
-    from tstudio.gallery.sixel import sixel_supported
-    from tstudio.gallery.sixel_widget import build_image_view
+    from tstudio.theme import apply_theme
 
-    # Decided once per run: pixels if the terminal answers for them, else the
-    # half-block art, which works on any terminal at all.
-    _SIXEL = sixel_supported()
-    _ImageView = build_image_view() if _SIXEL else None
-
-    from textual.widgets import DataTable, Input, ListItem, ListView, Static
+    from textual.widgets import (
+        DataTable,
+        Footer,
+        Input,
+        ListItem,
+        ListView,
+        Static,
+    )
     from textual.worker import get_current_worker
 
     from rich.text import Text
@@ -196,9 +195,17 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             padding: 1;
             overflow: hidden;
         }}
-        #preview-art {{
+        /* The art block sits in the middle of whatever room is left above the
+           facts, so a tall pane centres it rather than pinning it to the top. */
+        #preview-icon {{
             width: 1fr;
             height: 1fr;
+            content-align: center middle;
+            overflow: hidden;
+        }}
+        #preview-action {{
+            width: 1fr;
+            height: 1;
             overflow: hidden;
         }}
         #preview-meta {{
@@ -225,14 +232,19 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             Binding("f5", "reload", "Reload", priority=True),
 
             Binding("p", "play", "Play", priority=True),
+            # Shown, because an unshown binding may as well not exist: starring
+            # and going up a folder were both built and both invisible.
+            Binding("f", "toggle_favourite", "◆ Favourite", priority=True),
+            # key_display because Textual renders backspace as U+232B, which
+            # is tofu in Cascadia Mono - the footer should read, not puzzle.
+            Binding("backspace", "go_up", "Up folder",
+                    key_display="bksp", priority=True),
+            Binding("/", "focus_filter", "Filter", priority=True),
             Binding("j", "down", "Down", show=False),
             Binding("k", "up", "Up", show=False),
             Binding("g", "first", "First", show=False),
             Binding("G", "last", "Last", show=False),
-            Binding("f", "toggle_favourite", "Star", show=False),
             Binding(".", "toggle_hidden", "Hidden", show=False),
-            Binding("/", "focus_filter", "Filter", show=False),
-            Binding("backspace", "go_up", "Up folder", show=False),
             Binding("left", "focus_left", "Left", show=False),
             Binding("right", "focus_right", "Right", show=False),
         ]
@@ -260,20 +272,24 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             yield Input(placeholder="filter", id="filter")
             with Horizontal(id="panes"):
                 with ListView(id="places"):
-                    yield ListItem(Static("★ Favourites"))
-                    yield ListItem(Static("🕘 Recent"))
+                    yield ListItem(Static("◆ Favourites"))
+                    yield ListItem(Static("◷ Recent"))
                     yield ListItem(Static("─" * 16))
                     for fav in self.favourites.folders:
                         yield ListItem(Static(fav.path.name))
                 yield DataTable(id="files")
                 with Vertical(id="preview"):
-                    yield Static(_EMPTY_PREVIEW, id="preview-art")
-                    if _SIXEL:
-                        yield _ImageView(id="preview-image")
+                    yield Static(_EMPTY_PREVIEW, id="preview-icon")
                     yield Static("", id="preview-meta")
+                    yield Static("", id="preview-action")
             yield Static("", id="status")
+            # Without this the keys are a secret. Favourite, up-a-folder and
+            # filter were all built, bound and invisible - the status line
+            # below only ever showed the item count and the path.
+            yield Footer()
 
         def on_mount(self) -> None:
+            apply_theme(self)
             table = self.query_one("#files", DataTable)
             table.cursor_type = "row"
             table.zebra_stripes = False
@@ -323,10 +339,11 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
                 self._set_preview(_EMPTY_PREVIEW, [])
                 return
             pane.border_title = _truncate(selected.name, max(4, pane.size.width - 2))
-            self._set_preview(_LOADING_PREVIEW, [])
-            cols = max(_MIN_ART_COLS, pane.size.width)
-            rows = max(_MIN_ART_ROWS, pane.size.height - _META_ROWS)
-            self._load_preview(selected, kind, cols, rows)
+            # The art is known from the kind alone, so it goes up immediately;
+            # only the facts underneath need the file read, and that is a
+            # header probe rather than a frame render.
+            self._show_preview(selected, kind, [_LOADING_PREVIEW])
+            self._load_preview(selected, kind)
 
         # -- listing ---------------------------------------------------------
 
@@ -391,43 +408,32 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
                     return "folder" if entry.is_parent else entry.kind
             return None
 
-        def _image_widget(self):
-            """The sixel widget, or None when this terminal gets the art instead."""
-            if not _SIXEL:
-                return None
-            found = self.query("#preview-image")
-            return found.first() if found else None
-
         def _set_preview(self, message: str, meta: list[str], *, error: bool = False) -> None:
-            """Put a plain message (or an error) in the pane, and clear any picture."""
+            """Put a plain message (or an error) in the pane, and clear the art."""
             style = branding.RED if error else branding.GREY
-            art_widget = self.query_one("#preview-art", Static)
-            art_widget.display = True
-            art_widget.update(Text(message, style=style))
-            self.query_one("#preview-meta", Static).update(Text("\n".join(meta), style=branding.GREY))
-            image = self._image_widget()
-            if image is not None:
-                image.source = None
-                image.display = False
+            self.query_one("#preview-icon", Static).update(Text(message, style=style))
+            self.query_one("#preview-meta", Static).update(
+                Text("\n".join(meta), style=branding.GREY))
+            self.query_one("#preview-action", Static).update(Text(""))
 
-        def _show_preview(self, path: Path, art: list[str], meta: list[str],
-                          at: float | None = None) -> None:
-            """Paint finished worker output, unless the cursor has moved on since."""
+        def _show_preview(self, path: Path, kind: str, meta: list[str]) -> None:
+            """Paint finished worker output, unless the cursor has moved on since.
+
+            What goes in the pane is the file's own kind drawn as block art,
+            the facts underneath it, and the key that opens the real thing.
+            No frame is drawn here - see tstudio.gallery.icons for why that
+            promise was dropped.
+            """
             if path != self.selected:
                 return
-            image = self._image_widget()
-            if image is not None:
-                # real pixels: the Static steps aside so it cannot paint over them
-                self.query_one("#preview-art", Static).update(Text(""))
-                self.query_one("#preview-art", Static).display = False
-                image.display = True
-                image.at = at
-                image.source = path
-            else:
-                picture = Text.from_ansi("\n".join(art)) if art else Text("")
-                self.query_one("#preview-art", Static).display = True
-                self.query_one("#preview-art", Static).update(picture)
-            self.query_one("#preview-meta", Static).update(Text("\n".join(meta), style=branding.GREY))
+            # The CSS centres this block on both axes, so the art is written
+            # out plainly here; padding it as well would centre it twice.
+            self.query_one("#preview-icon", Static).update(
+                Text("\n".join(icons.art_for_kind(kind)), style=branding.AMBER))
+            self.query_one("#preview-meta", Static).update(
+                Text("\n".join(meta), style=branding.GREY))
+            self.query_one("#preview-action", Static).update(
+                Text(icons.action_for_kind(kind), style=branding.GREEN))
 
         def _show_preview_error(self, path: Path, message: str) -> None:
             if path != self.selected:
@@ -435,26 +441,29 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             self._set_preview(message, [], error=True)
 
         @work(thread=True, exclusive=True, group="preview")
-        def _load_preview(self, path: Path, kind: str, cols: int, rows: int) -> None:
-            """ffmpeg and ImageMagick in a thread: seconds of work, never on the event loop."""
+        def _load_preview(self, path: Path, kind: str) -> None:
+            """Read what the file IS, in a thread. No frame is rendered here.
+
+            This used to pull a frame out with ffmpeg and convert it with
+            ImageMagick, which on a 3.7 GB 4K HDR source takes seconds and
+            leaves the pane blank meanwhile. All that is left is ``probe``,
+            which reads the container header and returns at once, so moving
+            the cursor down a folder of 4K files no longer queues up seconds
+            of work per row.
+            """
             worker = get_current_worker()
             try:
-                at = None
                 if kind == "image":
                     meta = [human_size(path.stat().st_size)]
-                    art = [] if _SIXEL else art_for(path, cols, rows)
                 else:
-                    info = probe(path)
-                    meta = _video_meta_lines(info)
-                    at = info.duration / 2 if info.duration else None
-                    art = [] if _SIXEL else art_for(path, cols, rows, at=at)
+                    meta = _video_meta_lines(probe(path))
             except ClipError as exc:
                 self._from_thread(worker, self._show_preview_error, path, str(exc))
                 return
             except OSError as exc:
                 self._from_thread(worker, self._show_preview_error, path, str(exc))
                 return
-            self._from_thread(worker, self._show_preview, path, art, meta, at)
+            self._from_thread(worker, self._show_preview, path, kind, meta)
 
         def _from_thread(self, worker: object, callback, *args: object) -> None:
             """call_from_thread, but silent when the worker was superseded or the app is gone."""
@@ -468,8 +477,14 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
         # -- navigation ------------------------------------------------------
 
         def _selected_entry(self) -> Entry | None:
-            table = self.query_one("#files", DataTable)
-            if table.row_count == 0:
+            # A highlight can arrive after the table is gone - the listing is
+            # rebuilt whenever the folder, the filter or show_hidden changes,
+            # and the app can be shutting down. query_one would raise NoMatches
+            # from inside a message handler, which takes the whole app down;
+            # every caller here already copes with "nothing selected".
+            tables = self.query("#files").results(DataTable)
+            table = next(iter(tables), None)
+            if table is None or table.row_count == 0:
                 return None
             visible = filter_entries(self._entries, self.query_text)
             row = table.cursor_row
@@ -540,7 +555,7 @@ def build_gallery(folder: Path, favourites: Favourites | None = None) -> object:
             if 0 <= row < table.row_count:
                 table.move_cursor(row=row, column=0)
             verb = "added to" if starred else "removed from"
-            self.notify(f"{entry.name} {verb} favourites", title="★")
+            self.notify(f"{entry.name} {verb} favourites", title="◆")
 
         def action_toggle_hidden(self) -> None:
             self.show_hidden = not self.show_hidden

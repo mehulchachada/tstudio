@@ -33,6 +33,7 @@ from tstudio.gallery.playback import (
     MPV_HINT,
     mpv_available,
     play_with_mpv,
+    plays_in_terminal,
     scrub_timestamps,
 )
 from tstudio.gallery.thumbs import art_for
@@ -59,6 +60,11 @@ SCRUB_STEPS = 10
 
 LOADING_TEXT = "loading…"
 KEY_HINTS = "←/→ scrub · home/end ends · p play · q close"
+
+#: Shown after playing when this terminal cannot draw video and mpv had to
+#: open its own window - otherwise nothing on screen changes and it looks
+#: as though "p" did nothing at all.
+WINDOW_HINT = "playing in an mpv window · this terminal cannot show video inline"
 
 
 def _preview_css(selector: str) -> str:
@@ -333,18 +339,25 @@ def build_preview_screen(path: Path, *, start: float | None = None,
             self._goto(len(self.timestamps) - 1)
 
         def action_play(self) -> None:
-            """Hand the terminal to mpv, or say how to get mpv. Never fail."""
+            """Hand the clip to mpv, or say how to get mpv. Never fail."""
             if not mpv_available():
                 self._set_hint(MPV_HINT)
                 return
+            in_terminal = plays_in_terminal()
             try:
-                # mpv takes over the terminal, so Textual has to let go of it.
+                # With a terminal video output mpv takes over the terminal, so
+                # Textual has to let go of it. Suspending costs nothing in the
+                # windowed case, where mpv still reads keys from this terminal.
                 with self.app.suspend():
                     play_with_mpv(self.path)
             except ClipError as exc:
                 self._show_error(str(exc))
                 return
-            self._set_hint(KEY_HINTS)
+            # Say where it went. A window opening somewhere else is a surprise
+            # worth one line, and it is the only clue that this terminal
+            # cannot draw video - which is otherwise indistinguishable from
+            # the clip simply having no picture.
+            self._set_hint(KEY_HINTS if in_terminal else WINDOW_HINT)
 
         def action_close(self) -> None:
             self.dismiss(None)

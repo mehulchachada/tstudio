@@ -12,7 +12,13 @@ from fixture import ffmpeg_available, ensure_sample, probe_duration
 
 from tstudio import ClipError
 from tstudio.convert import run_convert, tonemap_filter
-from tstudio.media import MediaInfo, VideoStream, is_hdr, probe
+from tstudio.media import (
+    MediaInfo,
+    VideoStream,
+    encoders_available,
+    is_hdr,
+    probe,
+)
 from tstudio.presets import (
     PRESETS,
     Preset,
@@ -99,6 +105,15 @@ def _plan(info: MediaInfo, preset, **kwargs) -> "ConvertPlan":
     with mock.patch("tstudio.presets.encoders_available",
                     return_value=frozenset({"h264_nvenc", "libx264"})):
         return plan_social(info, Path("out.mp4"), preset, **kwargs)
+
+
+def _hdr_plan(info: MediaInfo, preset, **kwargs) -> "ConvertPlan":
+    """plan_social in HDR-output mode, with an HEVC encoder available."""
+    with mock.patch(
+        "tstudio.presets.encoders_available",
+        return_value=frozenset({"h264_nvenc", "libx264", "hevc_nvenc", "libx265"}),
+    ):
+        return plan_social(info, Path("out.mp4"), preset, hdr_out=True, **kwargs)
 
 
 def _chain(plan) -> str:
@@ -205,6 +220,84 @@ class PlanShapeTests(unittest.TestCase):
         self.assertEqual(command[command.index("-t") + 1], "2.000")
         self.assertEqual(plan.start, 1.0)
         self.assertEqual(plan.end, 3.0)
+
+    def test_encoder_auto_matches_the_old_h264_default(self):
+        # The default changed from "h264_nvenc" to "auto"; for SDR output it
+        # must resolve to exactly the same command as before.
+        info = _hdr_info(Path("in.mp4"))
+        self.assertEqual(
+            _plan(info, "shorts").command,
+            _plan(info, "shorts", encoder="h264_nvenc").command,
+        )
+
+    def test_hdr_out_keeps_the_colour_and_still_reframes(self):
+        plan = _hdr_plan(_hdr_info(Path("in.mp4")), "shorts")
+        self.assertEqual((plan.width, plan.height), (1080, 1920))
+        self.assertTrue(plan.hdr_in)
+        self.assertTrue(plan.hdr_out)
+        self.assertFalse(plan.tonemapped)
+        self.assertIsNone(plan.tonemapper)
+        self.assertEqual(plan.encoder, "hevc_nvenc")
+
+        command = " ".join(plan.command)
+        self.assertIn("main10", command)
+        self.assertIn("p010le", command)
+        self.assertIn("smpte2084", command)
+        self.assertIn("bt2020", command)
+        self.assertNotIn("bt709", command)
+        self.assertNotIn("libplacebo", command)
+        self.assertNotIn("tonemap", command)
+
+        chain = _chain(plan)
+        self.assertIn("gblur", chain)
+        self.assertIn("overlay", chain)
+        self.assertNotIn("format=yuv420p", chain)
+
+    def test_hdr_out_crop_chain_is_unflattened(self):
+        plan = _hdr_plan(_hdr_info(Path("in.mp4")), "shorts", fit="crop")
+        chain = _chain(plan)
+        self.assertIn("crop=1080:1920", chain)
+        self.assertNotIn("gblur", chain)
+        self.assertNotIn("format=yuv420p", chain)
+
+    def test_hdr_out_caps_fps_the_same_way(self):
+        plan = _hdr_plan(_hdr_info(Path("in.mp4")), "shorts")
+        self.assertEqual(plan.command[plan.command.index("-r") + 1], "60")
+
+    def test_hdr_out_refuses_h264(self):
+        for encoder in ("libx264", "h264_nvenc"):
+            with self.subTest(encoder=encoder):
+                with self.assertRaises(ClipError) as ctx:
+                    _hdr_plan(_hdr_info(Path("in.mp4")), "shorts",
+                              encoder=encoder)
+                message = str(ctx.exception)
+                self.assertIn("cannot write HDR", message)
+                self.assertIn("hevc_nvenc", message)
+                self.assertIn("libx265", message)
+
+    def test_hdr_out_cannot_be_invented_from_sdr(self):
+        with self.assertRaises(ClipError) as ctx:
+            _hdr_plan(_sdr_info(Path("in.mp4")), "shorts")
+        self.assertIn("invented", str(ctx.exception))
+
+    def test_hdr_out_honours_an_explicit_hevc_encoder(self):
+        plan = _hdr_plan(_hdr_info(Path("in.mp4")), "x", encoder="libx265")
+        self.assertEqual(plan.encoder, "libx265")
+        self.assertEqual(plan.quality, 20)
+        self.assertIn("-crf", plan.command)
+
+    def test_hdr_out_without_an_hdr_encoder_available(self):
+        with mock.patch("tstudio.presets.encoders_available",
+                        return_value=frozenset({"h264_nvenc", "libx264"})):
+            with self.assertRaises(ClipError) as ctx:
+                plan_social(_hdr_info(Path("in.mp4")), Path("out.mp4"),
+                            "shorts", hdr_out=True)
+        self.assertIn("not available", str(ctx.exception))
+
+    def test_hdr_out_mute(self):
+        plan = _hdr_plan(_hdr_info(Path("in.mp4")), "shorts", mute=True)
+        self.assertIn("-an", plan.command)
+        self.assertNotIn("-c:a", plan.command)
 
     def test_no_avoid_negative_ts_and_faststart(self):
         for info in (_hdr_info(Path("in.mp4")), _sdr_info(Path("in.mp4"))):
@@ -315,6 +408,28 @@ class RealSocialTests(unittest.TestCase):
             self.assertAlmostEqual(probe_duration(dst), 2.0, delta=0.3)
             self.assertEqual(out.video.pix_fmt, "yuv420p")
             self.assertNotEqual(out.video.color_transfer, "smpte2084")
+
+    @unittest.skipUnless(
+        "libx265" in encoders_available(), "libx265 not available")
+    def test_hdr_source_really_exports_vertical_hdr(self):
+        """The whole point: a 9:16 reframe that is still HDR on disk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = ensure_sample("hdr")
+            dst = Path(tmp) / "out.mp4"
+            info = probe(src)
+            # A small 9:16 frame so the test stays quick.
+            preset = Preset("tiny", "Tiny vertical", 270, 480,
+                            None, None, "128k", "test only")
+            plan = plan_social(info, dst, preset, fit="crop",
+                               encoder="libx265", quality=35, hdr_out=True)
+            self.assertTrue(plan.hdr_out)
+            self.assertFalse(plan.tonemapped)
+            run_convert(plan)
+            self.assertTrue(dst.exists())
+            out = probe(dst)
+            self.assertEqual((out.video.width, out.video.height), (270, 480))
+            self.assertEqual(out.video.color_transfer, "smpte2084")
+            self.assertIn(out.video.pix_fmt, ("yuv420p10le", "p010le"))
 
     def test_unsized_tonemap_filter_parses(self):
         src = ensure_sample("hdr")

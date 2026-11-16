@@ -6,8 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tstudio import ClipError
-from tstudio.convert import ConvertPlan, resolve_range, tonemap_filter
+from tstudio.convert import ConvertPlan, colour_flags, resolve_range, tonemap_filter
 from tstudio.media import MediaInfo, encoders_available, filters_available, is_hdr
+
+# Encoders that can write HDR, best first. h264 cannot, in either flavour.
+_HDR_ENCODERS = ("hevc_nvenc", "av1_nvenc", "libx265")
+_SDR_ONLY_ENCODERS = ("h264_nvenc", "libx264")
 
 
 @dataclass(frozen=True)
@@ -76,9 +80,19 @@ def _ratios_match(src_w: int, src_h: int, dst_w: int, dst_h: int) -> bool:
     return abs(src - dst) / dst < 0.01
 
 
-def _social_chain(info: MediaInfo, width: int, height: int, fit: str) -> str:
-    """The -vf chain for a social preset: optional tone-map, then pad/crop."""
+def _social_chain(info: MediaInfo, width: int, height: int, fit: str,
+                  *, hdr_out: bool = False) -> str:
+    """The -vf chain for a social frame: optional tone-map, then pad/crop.
+
+    The pad and crop geometry is colour-blind - it works on an HDR source
+    exactly as it does on an SDR one. Only two things make the chain SDR, and
+    both are skipped when ``hdr_out`` is True: the tone-map segment in front,
+    and the trailing ``format=yuv420p``, which would flatten 10-bit video to
+    8-bit. With ``hdr_out`` the pixel format is left to ``-pix_fmt p010le``
+    from ``colour_flags``, matching how ``plan_convert`` writes HDR.
+    """
     video = info.video
+    flatten = "" if hdr_out else ",format=yuv420p"
     if _ratios_match(video.width, video.height, width, height):
         chain = f"scale={width}:{height}:flags=lanczos"
     elif fit == "pad":
@@ -87,12 +101,12 @@ def _social_chain(info: MediaInfo, width: int, height: int, fit: str) -> str:
             f"[a]scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height},gblur=sigma=20[bg];"
             f"[b]scale={width}:-2[fg];"
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p"
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2" + flatten
         )
     else:  # crop
-        chain = f"scale=-2:{height},crop={width}:{height},format=yuv420p"
+        chain = f"scale=-2:{height},crop={width}:{height}" + flatten
 
-    if is_hdr(info.video):
+    if is_hdr(info.video) and not hdr_out:
         chain = tonemap_filter(info) + "," + chain
     return chain
 
@@ -112,16 +126,23 @@ def plan_social(
     preset: Preset | str,
     *,
     fit: str = "pad",
-    encoder: str = "h264_nvenc",
+    encoder: str = "auto",
     quality: int | None = None,
     mute: bool = False,
+    hdr_out: bool = False,
     start: float | None = None,
     end: float | None = None,
 ) -> ConvertPlan:
-    """Build the ffmpeg command for a social-media preset.
+    """Build the ffmpeg command for a social-media frame.
 
-    Always SDR H.264 by default: tone-maps HDR sources, pads or crops to
-    the preset's frame, caps the frame rate, and tags bt709/yuv420p.
+    SDR H.264 by default: tone-maps HDR sources, pads or crops to the
+    preset's frame, caps the frame rate, and tags bt709/yuv420p.
+
+    With ``hdr_out=True`` the reframing is unchanged but the colour is kept:
+    no tone-map, ``-profile:v main10 -pix_fmt p010le`` and the bt2020/
+    smpte2084 tags instead of the bt709 ones. That needs an HEVC or AV1
+    encoder - h264 cannot carry HDR in either flavour - and it needs an HDR
+    source, since HDR cannot be invented.
     """
     if isinstance(preset, str):
         preset = get_preset(preset)
@@ -131,7 +152,24 @@ def plan_social(
     if fit not in ("pad", "crop"):
         raise ClipError(f"unknown fit {fit!r}; use 'pad' or 'crop'")
 
+    hdr_in = is_hdr(video)
+    if hdr_out and not hdr_in:
+        raise ClipError("HDR cannot be invented from an SDR source")
+
     available = encoders_available()
+    if hdr_out:
+        if encoder == "auto":
+            encoder = next(
+                (name for name in _HDR_ENCODERS if name in available),
+                _HDR_ENCODERS[0],
+            )
+        if encoder in _SDR_ONLY_ENCODERS:
+            raise ClipError(
+                f"encoder {encoder!r} cannot write HDR; pass "
+                "encoder='hevc_nvenc' or encoder='libx265'"
+            )
+    elif encoder == "auto":
+        encoder = "h264_nvenc"
     if encoder == "h264_nvenc" and "h264_nvenc" not in available:
         encoder = "libx264"
     if encoder not in available:
@@ -142,7 +180,8 @@ def plan_social(
     if quality is None:
         quality = 21 if encoder.endswith("_nvenc") else 20
 
-    chain = _social_chain(info, preset.width, preset.height, fit)
+    chain = _social_chain(info, preset.width, preset.height, fit,
+                          hdr_out=hdr_out)
 
     start, end = resolve_range(info, start, end)
 
@@ -156,17 +195,21 @@ def plan_social(
     if preset.fps_cap is not None and video.fps > preset.fps_cap:
         command += ["-r", str(preset.fps_cap)]
 
-    # Social output is always SDR bt709, whatever the source was.
-    command += ["-pix_fmt", "yuv420p",
-                "-colorspace", "bt709", "-color_trc", "bt709",
-                "-color_primaries", "bt709", "-color_range", "tv"]
+    if hdr_out:
+        # main10/p010le plus the bt2020/smpte2084 tags.
+        command += colour_flags(True, info)
+    else:
+        # Social output is SDR bt709 by default, whatever the source was.
+        command += ["-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709", "-color_trc", "bt709",
+                    "-color_primaries", "bt709", "-color_range", "tv"]
 
     command += _video_args(encoder, quality)
     command += ["-an"] if mute else ["-c:a", "aac", "-b:a", preset.audio_bitrate]
     command += ["-movflags", "+faststart"]
     command.append(str(dst))
 
-    tonemapped = is_hdr(info.video)
+    tonemapped = hdr_in and not hdr_out
     tonemapper: str | None = None
     if tonemapped:
         filters = filters_available()
@@ -180,8 +223,8 @@ def plan_social(
         dst=Path(dst),
         width=preset.width,
         height=preset.height,
-        hdr_in=tonemapped,
-        hdr_out=False,
+        hdr_in=hdr_in,
+        hdr_out=hdr_out,
         tonemapped=tonemapped,
         tonemapper=tonemapper,
         encoder=encoder,

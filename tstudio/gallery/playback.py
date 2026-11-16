@@ -67,28 +67,83 @@ def _require_file(path: Path) -> None:
         raise ClipError(f"there is nothing to play at {path} - the file is missing")
 
 
-def mpv_command(path: Path) -> list[str]:
-    """The argv that plays ``path`` as truecolor text in this terminal.
+#: Force or forbid drawing video in the terminal: "sixel", "tct", or a false
+#: value to always use a window. Unset means ask the terminal (see terminal_vo).
+TERMINAL_PLAYBACK_ENV: str = "TSTUDIO_TERMINAL_PLAYBACK"
 
-    Pure: it builds the list and runs nothing. ``--vo=tct`` is the video output
-    that draws into the terminal itself. Raises ClipError if the file is missing.
+_OFF_VALUES = frozenset({"0", "no", "off", "false", "none", "window"})
+
+
+def terminal_vo() -> str | None:
+    """Which mpv video output can actually draw in THIS terminal, or None.
+
+    Only ``sixel`` is ever chosen on its own, because sixel is the only one
+    that can be *asked* about: DA1 attribute 4 is an answer from the terminal
+    itself, not a guess.
+
+    ``tct`` is a guess, and the guess is wrong in at least one terminal that
+    people use daily. In the Claude desktop terminal - which answers DA1 with
+    no attribute 4, so it gets no sixel either - ``mpv --vo=tct`` writes
+    nothing at all. Measured twice there, the second time with
+    ``--vo-tct-width/height`` forced, in case size detection was the problem:
+    zero bytes both times. The clip then plays its audio over a blank screen,
+    and ``--really-quiet`` swallows whatever mpv might have said about it.
+
+    Silent audio-only playback is a worse answer than a window, so when the
+    terminal does not claim sixel this returns None and the caller opens mpv's
+    own window instead.
+
+    ``TSTUDIO_TERMINAL_PLAYBACK=tct`` forces tct where it is known to work;
+    ``=sixel`` forces sixel; a false value never draws in the terminal.
+    """
+    forced = os.environ.get(TERMINAL_PLAYBACK_ENV, "").strip().lower()
+    if forced in ("sixel", "tct"):
+        return forced
+    if forced in _OFF_VALUES:
+        return None
+    from tstudio.gallery.sixel import sixel_supported
+    return "sixel" if sixel_supported() else None
+
+
+def plays_in_terminal() -> bool:
+    """True when a clip will be drawn in the terminal rather than in a window."""
+    return terminal_vo() is not None
+
+
+def mpv_command(path: Path) -> list[str]:
+    """The argv that plays ``path`` where it will actually be seen.
+
+    Inside the terminal when the terminal can draw it, in mpv's own window
+    when it cannot - never a terminal video output that would play the sound
+    and show nothing. Pure apart from asking the terminal what it supports.
+    Raises ClipError if the file is missing.
     """
     _require_file(path)
-    return [mpv_path() or "mpv", "--vo=tct", "--really-quiet", str(path)]
+    mpv = mpv_path() or "mpv"
+    vo = terminal_vo()
+    if vo is None:
+        return [mpv, "--really-quiet", str(path)]
+    return [mpv, f"--vo={vo}", "--really-quiet", str(path)]
 
 
 def play_with_mpv(path: Path) -> int:
-    """Play ``path`` in the terminal with mpv and return mpv's exit code.
+    """Play ``path`` with mpv and return mpv's exit code.
+
+    Where the terminal can draw video it plays there; where it cannot, mpv's
+    own window opens instead. ``plays_in_terminal()`` says which, so a UI can
+    tell the user where to look.
 
     The CALLER must suspend the Textual app around this call::
 
         with app.suspend():
             code = play_with_mpv(path)
 
-    mpv takes over the terminal completely with ``--vo=tct`` - it writes frames
-    to stdout and reads keys from stdin - so without ``app.suspend()`` mpv and
-    Textual fight over the same screen and both end up corrupted. This module
-    deliberately does not import textual; suspending is the UI layer's job.
+    With a terminal video output mpv takes over the terminal completely - it
+    writes frames to stdout and reads keys from stdin - so without
+    ``app.suspend()`` mpv and Textual fight over the same screen and both end
+    up corrupted. Suspending is harmless in the windowed case, where mpv still
+    reads keys from the terminal it was started in. This module deliberately
+    does not import textual; suspending is the UI layer's job.
 
     Raises ClipError carrying MPV_HINT when mpv is not installed, and ClipError
     when the file is missing or mpv cannot be started.
@@ -149,13 +204,16 @@ def scrub_frame(
 def player_command(path: Path, *, in_terminal: bool = False) -> list[str]:
     """argv for watching `path` in mpv.
 
-    `in_terminal=True` draws the video as text in the terminal (--vo=tct),
-    which is a neat trick for a peek at the source. For reviewing a finished
-    clip you want the real thing, so the default opens mpv's own window.
+    `in_terminal=True` asks for the video inside the terminal, which is a neat
+    trick for a peek at the source - but only where the terminal has sixel,
+    since that is the only one that can be verified; elsewhere it falls back
+    to a window rather than playing the sound over a blank screen. For
+    reviewing a finished clip you want the real thing anyway, so the default
+    opens mpv's own window.
     """
     _require_file(path)
     if in_terminal:
-        return [mpv_path() or "mpv", "--vo=tct", "--really-quiet", str(path)]
+        return mpv_command(path)
     return [mpv_path() or "mpv", "--really-quiet", str(path)]
 
 

@@ -6,6 +6,7 @@ call (shutil.which, subprocess.run, probe, art_for) is patched.
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,6 +47,13 @@ class MpvAvailableTests(unittest.TestCase):
         self.assertEqual(which.call_count, 1)
 
 
+def _pin_vo(testcase, vo="tct"):
+    """Pin the terminal video output so argv assertions are deterministic."""
+    patcher = mock.patch.object(playback, "terminal_vo", return_value=vo)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+
+
 def _pin_mpv(testcase, where="mpv"):
     """Pin where mpv is, so argv assertions do not depend on this machine."""
     patcher = mock.patch.object(playback, "mpv_path", return_value=where)
@@ -57,6 +65,7 @@ class MpvCommandTests(unittest.TestCase):
 
     def setUp(self):
         _pin_mpv(self)
+        _pin_vo(self)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.clip = Path(self._tmp.name) / "clip.mp4"
@@ -79,6 +88,7 @@ class PlayWithMpvTests(unittest.TestCase):
 
     def setUp(self):
         _pin_mpv(self)
+        _pin_vo(self)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.clip = Path(self._tmp.name) / "clip.mp4"
@@ -257,10 +267,65 @@ class OpenInPlayerTests(unittest.TestCase):
             self.assertEqual(argv[0], "mpv")
             self.assertNotIn("--vo=tct", argv)
 
-    def test_in_terminal_command_asks_for_tct(self) -> None:
+    def test_in_terminal_command_asks_for_a_terminal_vo(self) -> None:
+        """Whatever terminal_vo answers, and a window when it answers None."""
         with tempfile.TemporaryDirectory() as tmp:
-            argv = playback.player_command(self._file(tmp), in_terminal=True)
-            self.assertIn("--vo=tct", argv)
+            clip = self._file(tmp)
+            with mock.patch.object(playback, "terminal_vo", return_value="sixel"):
+                self.assertIn("--vo=sixel", playback.player_command(clip, in_terminal=True))
+            with mock.patch.object(playback, "terminal_vo", return_value="tct"):
+                self.assertIn("--vo=tct", playback.player_command(clip, in_terminal=True))
+            with mock.patch.object(playback, "terminal_vo", return_value=None):
+                argv = playback.player_command(clip, in_terminal=True)
+                self.assertFalse([a for a in argv if a.startswith("--vo=")], argv)
+
+    def test_sixel_is_the_only_terminal_output_chosen_on_its_own(self) -> None:
+        """tct is a guess, and a wrong guess plays audio over a blank screen.
+
+        Measured in the Claude desktop terminal, which answers DA1 without
+        attribute 4: `mpv --vo=tct` wrote zero bytes, twice, the second time
+        with the size forced. So "no sixel" means a window, not tct.
+        """
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(playback.TERMINAL_PLAYBACK_ENV, None)
+            with mock.patch("tstudio.gallery.sixel.sixel_supported",
+                            return_value=True):
+                self.assertEqual(playback.terminal_vo(), "sixel")
+                self.assertTrue(playback.plays_in_terminal())
+            with mock.patch("tstudio.gallery.sixel.sixel_supported",
+                            return_value=False):
+                self.assertIsNone(playback.terminal_vo())
+                self.assertFalse(playback.plays_in_terminal())
+
+    def test_without_sixel_the_command_opens_a_window_not_tct(self) -> None:
+        """The regression: audio played and nothing was drawn."""
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / "c.mp4"
+            clip.write_bytes(b"x")
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop(playback.TERMINAL_PLAYBACK_ENV, None)
+                with mock.patch("tstudio.gallery.sixel.sixel_supported",
+                                return_value=False):
+                    argv = playback.mpv_command(clip)
+            self.assertNotIn("--vo=tct", argv)
+            self.assertFalse([a for a in argv if a.startswith("--vo=")],
+                             f"a terminal vo slipped through: {argv}")
+
+    def test_tct_can_still_be_forced_for_terminals_that_do_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / "c.mp4"
+            clip.write_bytes(b"x")
+            with mock.patch.dict(
+                    os.environ, {playback.TERMINAL_PLAYBACK_ENV: "tct"}):
+                self.assertEqual(playback.terminal_vo(), "tct")
+                self.assertIn("--vo=tct", playback.mpv_command(clip))
+
+    def test_terminal_playback_can_be_switched_off_outright(self) -> None:
+        with mock.patch.dict(
+                os.environ, {playback.TERMINAL_PLAYBACK_ENV: "0"}):
+            with mock.patch("tstudio.gallery.sixel.sixel_supported",
+                            return_value=True):
+                self.assertIsNone(playback.terminal_vo())
 
     def test_uses_mpv_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
