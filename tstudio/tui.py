@@ -239,10 +239,17 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
         for fit in ("crop", "pad"):
             shape_options.append((f"{ratio}  {fit}", f"{ratio}|{fit}"))
 
+    # COLOUR names the colour the output will be, not what is being done to
+    # the source: "HDR10" and "SDR", the only two answers there are. The old
+    # labels ("keep HDR10", "SDR  (tone-map)") described the operation, which
+    # made the two read as different kinds of thing rather than as a pair.
+    # An SDR source still gets one entry, because HDR cannot be invented -
+    # but it is now "SDR" rather than "keep", so the control says what you
+    # will get whichever file you opened.
     if source_is_hdr:
-        colour_options = [("keep HDR10", "keep"), ("SDR  (tone-map)", "sdr")]
+        colour_options = [("HDR10", "keep"), ("SDR", "sdr")]
     else:
-        colour_options = [("keep", "keep")]
+        colour_options = [("SDR", "keep")]
 
     # "source" rather than "" for the uncapped option: Textual's Select treats
     # a blank specially (its BLANK sentinel), and an empty-string value in a
@@ -700,8 +707,8 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
 
             This is the whole difference between a preset that helps and one
             that gets in the way: it writes values into controls that stay
-            editable. Changing COLOUR back to "keep HDR10" afterwards leaves
-            the 9:16 reframe alone, which is how "Shorts, but keep HDR10" is
+            editable. Setting COLOUR back to "HDR10" afterwards leaves the
+            9:16 reframe alone, which is how "Shorts, but keep HDR10" is
             expressed.
             """
             recipe = recipe_for_preset(name)
@@ -1012,6 +1019,21 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
                 self.call_from_thread(self._ui_fail, str(exc))
 
         # -- the animated progress block --------------------------------------
+        def _widget(self, selector: str):
+            """The widget, or None once it has gone.
+
+            Three separate things have now crashed this editor by assuming a
+            widget is still mounted: the progress timer, and both job
+            callbacks. Finishing an encode - or ticking - after the screen has
+            been taken out from under it is ordinary: pushing the preview
+            screen does it, and so does quitting mid-encode. The difference is
+            the blast radius. NoMatches raised in a timer callback, or carried
+            back into a worker by call_from_thread, does not skip one update;
+            it takes the whole app down.
+            """
+            found = self.query(selector)
+            return found.first() if found else None
+
         def _bar_widget(self):
             """The progress Static, or None when it is not on the screen.
 
@@ -1021,8 +1043,7 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             Both are normal, so this answers None rather than raising NoMatches
             into Textual's timer callback.
             """
-            found = self.query("#bar")
-            return found.first() if found else None
+            return self._widget("#bar")
 
         def _bar_width(self, bar) -> int:
             """How wide the two progress lines may be, never below the minimum.
@@ -1080,10 +1101,15 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             self._draw_progress(label="done")
             self._last_output = Path(dst)
             name = Path(dst).name
+            # The file is written either way; only the reporting needs a
+            # screen to report onto.
+            play = self._widget("#btn_play")
+            status = self._widget("#status")
+            if play is None or status is None:
+                return
             # There is something to play now, so the button appears.
-            self.query_one("#btn_play", Button).display = True
-            self.query_one("#status", Static).update(
-                Text(f"done → {name}  ({size})", style=branding.GREEN))
+            play.display = True
+            status.update(Text(f"done → {name}  ({size})", style=branding.GREEN))
             self.notify(f"{name} ({size})", title="written", severity="information")
             self._set_controls_enabled(True)
 
@@ -1092,8 +1118,10 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
             bar = self._bar_widget()
             if bar is not None:
                 bar.update(Text(""))
-            self.query_one("#status", Static).update(
-                Text(f"error: {message}", style=branding.RED))
+            status = self._widget("#status")
+            if status is None:
+                return
+            status.update(Text(f"error: {message}", style=branding.RED))
             self.notify(message, title="failed", severity="error")
             self._set_controls_enabled(True)
 

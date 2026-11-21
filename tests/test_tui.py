@@ -222,6 +222,34 @@ class TestTui(unittest.TestCase):
 
         self._run(scenario())
 
+    def test_colour_is_named_by_what_comes_out(self) -> None:
+        """SDR and HDR10 are one choice, so they must read as one pair.
+
+        They used to be labelled "keep HDR10" and "SDR  (tone-map)", which
+        names the operation rather than the result and makes the two sound
+        like different kinds of thing. The value behind each is unchanged.
+        """
+        async def scenario():
+            async with _app(kind="hdr").run_test() as pilot:
+                await pilot.pause()
+                labels = [str(p) for p, _ in pilot.app.query_one("#colour")._options]
+                self.assertEqual(labels, ["HDR10", "SDR"])
+                for label in labels:
+                    self.assertNotIn("keep", label.lower())
+                    self.assertNotIn("tone", label.lower())
+
+        self._run(scenario())
+
+    def test_an_sdr_source_still_says_what_it_will_produce(self) -> None:
+        """Its one option reads "SDR", not "keep" - a colour, like the pair."""
+        async def scenario():
+            async with _app().run_test() as pilot:
+                await pilot.pause()
+                labels = [str(p) for p, _ in pilot.app.query_one("#colour")._options]
+                self.assertEqual(labels, ["SDR"])
+
+        self._run(scenario())
+
     # -- one button, and it does not move about ---------------------------
     def test_the_action_button_keeps_one_label(self) -> None:
         """It used to read Cut / Convert / Export depending on the recipe.
@@ -403,6 +431,36 @@ class TestTui(unittest.TestCase):
                                  f"expected two progress lines, got {sample!r}")
                 self.assertGreater(len(seen), 1,
                                    "the progress block drew but never changed")
+
+        self._run(scenario())
+
+    def test_a_job_reporting_back_to_no_screen_does_not_crash(self) -> None:
+        """Quitting mid-encode is ordinary, and the worker still reports back.
+
+        call_from_thread carries whatever the callback raises back into the
+        worker, so NoMatches here does not cost one status line - it fails
+        the worker and takes the app down with it. That is what made the
+        animation test above fail about one run in three: it stops watching
+        as soon as it has seen two frames, while ffmpeg is still going.
+        """
+        tmp = Path(tempfile.mkdtemp())
+        out = tmp / "gone.mp4"
+
+        async def scenario():
+            async with _app("2", "4", out).run_test() as pilot:
+                await pilot.pause()
+                await pilot.app.query_one("#status").remove()
+                await pilot.app.query_one("#btn_play").remove()
+                await pilot.pause()
+
+                pilot.app._ui_done(str(out), "1.2 MB")
+                pilot.app._ui_fail("ffmpeg said no")
+                await pilot.pause()
+
+                self.assertTrue(pilot.app.is_running)
+                # The file was written before any of this; losing the screen
+                # must not lose the path to it.
+                self.assertEqual(pilot.app._last_output, out)
 
         self._run(scenario())
 

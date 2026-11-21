@@ -190,7 +190,8 @@ tstudio raid.mp4 3:49-4:19 --for shorts --hdr keep
 
 The 9:16 reframing is unchanged — only the tone-map and the 8-bit flatten are skipped — and an
 HEVC or AV1 encoder is picked automatically, because h264 cannot carry HDR in either flavour.
-In the editor the same thing is COLOUR set back to `keep HDR10` after choosing a preset.
+In the editor the same thing is COLOUR set back to `HDR10` after choosing a preset — that control
+offers the two colours an output can be, `HDR10` and `SDR`.
 
 Note the deliberate asymmetry: `--hdr auto` **keeps** HDR under `--to` and **tone-maps** under
 `--for`. Converting a capture you are keeping should not throw colour away, but a social export
@@ -251,7 +252,7 @@ command line never depends on it.
 python -m unittest discover -s tests -t tests
 ```
 
-568 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
+571 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
 including a genuine **HDR10** fixture — and the suite performs actual cuts and conversions against
 them, then probes the results. The gallery and the editor are driven through Textual's own test
 pilot, and the editor has a layout test that fails if any widget leaves a 100×34 terminal.
