@@ -70,6 +70,44 @@ class TestBar(unittest.TestCase):
     def test_a_partial_cell_is_drawn(self):
         self.assertIn("▋", bar(0.55, 10))
 
+    def test_every_fraction_at_every_width_draws(self):
+        """This crash was live, not theoretical, and sampling missed it.
+
+        bar() indexed a seven-glyph string with eighths, which reach 7, so
+        any cell seven eighths full or more raised IndexError - one progress
+        value in eight. The tests above sample 0.0, 0.5, 0.55 and 1.0, and
+        every one of those is outside the bad band. Hence a sweep.
+        """
+        bad: list[str] = []
+        for width in (1, 2, 3, 7, 10, 24, 64, 214):
+            for step in range(1001):
+                fraction = step / 1000
+                try:
+                    value = bar(fraction, width)
+                except Exception as exc:  # noqa: BLE001 - any raise is the bug
+                    bad.append(f"width {width} at {fraction}: {exc!r}")
+                    continue
+                if len(value) != width:
+                    bad.append(
+                        f"width {width} at {fraction}: {len(value)} cells")
+        self.assertEqual(bad[:5], [], f"{len(bad)} bad (width, fraction) pairs")
+
+    def test_a_nearly_full_cell_uses_the_last_partial_glyph(self):
+        """0.09 of ten cells is nine tenths of one cell - the case that crashed."""
+        self.assertEqual(bar(0.09, 10), "▉" + " " * 9)
+
+    def test_the_bar_is_only_full_when_the_job_is(self):
+        """Never claim finished before finished.
+
+        This is why a nearly-full cell clamps to seven eighths instead of
+        carrying into the whole-cell run, which would read as done at 99%.
+        """
+        for step in range(1000):          # 0.000 .. 0.999
+            fraction = step / 1000
+            self.assertNotEqual(bar(fraction, 10), "█" * 10,
+                                f"bar reads full at {fraction}")
+        self.assertEqual(bar(1.0, 10), "█" * 10)
+
 
 class TestEta(unittest.TestCase):
     def test_half_done(self):
@@ -96,6 +134,25 @@ class TestRender(unittest.TestCase):
                 self.assertEqual(len(lines), 2)
                 for line in lines:
                     self.assertEqual(len(line), width)
+
+    def test_render_survives_every_fraction(self):
+        """render() is what the editor's timer calls eight times a second.
+
+        The traceback that started this came through here at width 214 and
+        fraction 0.0877, so the sweep covers the caller too, not only `bar`.
+        """
+        bad: list[str] = []
+        for width in (24, 40, 80, 214):
+            for step in range(501):
+                fraction = step / 500
+                try:
+                    lines = render(fraction, 164.25, 1314, width)
+                except Exception as exc:  # noqa: BLE001 - any raise is the bug
+                    bad.append(f"width {width} at {fraction}: {exc!r}")
+                    continue
+                if [len(line) for line in lines] != [width, width]:
+                    bad.append(f"width {width} at {fraction}: ragged")
+        self.assertEqual(bad[:5], [], f"{len(bad)} bad (width, fraction) pairs")
 
     def test_label_wins(self):
         lines = render(0.37, 12.0, 3, 40, label="writing out.mp4")

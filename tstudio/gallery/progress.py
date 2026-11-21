@@ -36,6 +36,9 @@ LINES: tuple[str, ...] = (
     "settling the levels",
 )
 
+#: One eighth through seven eighths of a cell. There is no eighth entry: a
+#: full cell is "█", which the whole-cell run already draws. So this is seven
+#: glyphs, not eight, and indexing it with eighths needs the clamp in `bar`.
 _PARTIAL = "▏▎▍▌▋▊▉"
 
 
@@ -69,7 +72,16 @@ def bar(fraction: float, width: int) -> str:
     partial = cells - whole
     if partial <= 0.0:
         return "█" * whole + " " * (width - whole)
-    return "█" * whole + _PARTIAL[int(partial * 8)] + " " * (width - whole - 1)
+    # partial is in (0, 1), so partial * 8 reaches 7.x and floors to 7 - one
+    # past the end of a seven-glyph string. That raised IndexError for every
+    # fraction whose cell was at least seven eighths full: one progress value
+    # in eight, hit live during a long encode.
+    #
+    # Clamped rather than carried into the whole-cell run on purpose. Carrying
+    # would draw a full bar at 99%, and a progress bar that says finished
+    # before it is finished is worse than one that sits at seven eighths.
+    eighths = min(int(partial * 8), len(_PARTIAL) - 1)
+    return "█" * whole + _PARTIAL[eighths] + " " * (width - whole - 1)
 
 
 def eta(fraction: float, elapsed: float) -> float | None:

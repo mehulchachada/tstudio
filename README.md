@@ -252,7 +252,7 @@ command line never depends on it.
 python -m unittest discover -s tests -t tests
 ```
 
-571 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
+576 tests. They are not mocks: `tests/fixture.py` generates small real videos with ffmpeg —
 including a genuine **HDR10** fixture — and the suite performs actual cuts and conversions against
 them, then probes the results. The gallery and the editor are driven through Textual's own test
 pilot, and the editor has a layout test that fails if any widget leaves a 100×34 terminal.

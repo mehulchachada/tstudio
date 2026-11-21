@@ -464,6 +464,35 @@ class TestTui(unittest.TestCase):
 
         self._run(scenario())
 
+    def test_a_broken_progress_frame_does_not_kill_the_encode(self) -> None:
+        """The bar is decoration; ffmpeg is the work.
+
+        A real IndexError in progress.render came out of this timer callback
+        and took the whole app down mid-export. The bug itself is fixed and
+        swept in test_progress, but the blast radius was the worse half: an
+        encode that had been running for minutes died for a drawing glitch.
+        """
+        from unittest import mock
+
+        async def scenario():
+            async with _app("2", "4").run_test() as pilot:
+                await pilot.pause()
+                pilot.app._start_animation()
+                await pilot.pause()
+                # the editor aliases this module, so patching it here is
+                # what the editor will call
+                with mock.patch("tstudio.gallery.progress.render",
+                                side_effect=IndexError("string index out of range")):
+                    pilot.app._draw_progress()
+                    await pilot.pause()
+
+                self.assertTrue(pilot.app.is_running, "the app went down")
+                # it stops animating rather than raising on every tick
+                self.assertIsNone(pilot.app._progress_timer)
+                self.assertIn("progress display stopped", _text(pilot, "#status"))
+
+        self._run(scenario())
+
     # -- shape of the screen -------------------------------------------------
     def test_everything_fits_in_a_100x34_terminal(self) -> None:
         async def scenario():

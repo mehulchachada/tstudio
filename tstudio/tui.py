@@ -1089,6 +1089,18 @@ def _build_app(info: MediaInfo, start_text: str, end_text: str,
                     self._bar_width(bar), label=label)
             except ClipError:
                 return
+            except Exception as exc:  # noqa: BLE001
+                # The bar is decoration; ffmpeg is the work. A frame that
+                # cannot be drawn used to come out of a timer callback and
+                # take the app down - and the encode with it, however long
+                # it had been running. Stop animating and say so instead.
+                self._stop_animation()
+                status = self._widget("#status")
+                if status is not None:
+                    status.update(Text(
+                        f"working... (progress display stopped: {exc})",
+                        style=branding.GREY))
+                return
             bar.update(Text("\n".join(lines), style=branding.GREEN))
 
         # -- UI updates (called on the main thread via call_from_thread) ------
